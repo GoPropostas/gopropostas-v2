@@ -626,6 +626,7 @@ def tela_escolha_imobiliaria():
 
 def painel_aprovacoes():
     if not pode_aprovar():
+        st.warning("Você não tem permissão para ver solicitações.")
         return
 
     st.markdown('<div class="gp-card"><div class="gp-section-title">✅ Solicitações pendentes</div>', unsafe_allow_html=True)
@@ -644,21 +645,22 @@ def painel_aprovacoes():
         imob = s.get("imobiliarias") or {}
         nome_usuario, email_usuario = buscar_nome_email_usuario(s["user_id"])
 
+        st.markdown('<div class="gp-member">', unsafe_allow_html=True)
         st.write(f"**Usuário:** {nome_usuario} — {email_usuario}")
         st.write(f"**Imobiliária:** {imob.get('nome', '')}")
 
         if pode_ver_todas():
             c1, c2, c3, c4 = st.columns(4)
             with c1:
-                if st.button("Corretor", key=f"cor_{s['id']}"):
+                if st.button("Aprovar Corretor", key=f"cor_{s['id']}"):
                     aprovar_vinculo(s["id"], st.session_state["usuario_id"], "corretor")
                     st.rerun()
             with c2:
-                if st.button("Diretor", key=f"dir_{s['id']}"):
+                if st.button("Aprovar Diretor", key=f"dir_{s['id']}"):
                     aprovar_vinculo(s["id"], st.session_state["usuario_id"], "diretor")
                     st.rerun()
             with c3:
-                if st.button("Administrador", key=f"adm_{s['id']}"):
+                if st.button("Aprovar Administrador", key=f"adm_{s['id']}"):
                     aprovar_vinculo(s["id"], st.session_state["usuario_id"], "administrador")
                     st.rerun()
             with c4:
@@ -668,7 +670,7 @@ def painel_aprovacoes():
         else:
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("Aprovar corretor", key=f"ap_{s['id']}"):
+                if st.button("Aprovar Corretor", key=f"ap_{s['id']}"):
                     aprovar_vinculo(s["id"], st.session_state["usuario_id"], "corretor")
                     st.rerun()
             with c2:
@@ -676,7 +678,7 @@ def painel_aprovacoes():
                     rejeitar_vinculo(s["id"])
                     st.rerun()
 
-        st.divider()
+        st.markdown("</div>", unsafe_allow_html=True)
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -709,10 +711,13 @@ def painel_membros_imobiliaria():
             col1, col2 = st.columns(2)
 
             with col1:
+                lista_cargos = ["corretor", "diretor", "administrador"]
+                indice_cargo = lista_cargos.index(cargo_atual) if cargo_atual in lista_cargos else 0
+
                 novo_cargo = st.selectbox(
                     f"Novo cargo para {email or membro['user_id']}",
-                    ["corretor", "diretor", "administrador"],
-                    index=["corretor", "diretor", "administrador"].index(cargo_atual) if cargo_atual in ["corretor", "diretor", "administrador"] else 0,
+                    lista_cargos,
+                    index=indice_cargo,
                     key=f"cargo_sel_{membro['id']}",
                 )
 
@@ -722,10 +727,13 @@ def painel_membros_imobiliaria():
                     st.rerun()
 
             with col2:
+                lista_status = ["aprovado", "pendente", "rejeitado"]
+                indice_status = lista_status.index(status_atual) if status_atual in lista_status else 0
+
                 novo_status = st.selectbox(
                     f"Novo status para {email or membro['user_id']}",
-                    ["aprovado", "pendente", "rejeitado"],
-                    index=["aprovado", "pendente", "rejeitado"].index(status_atual) if status_atual in ["aprovado", "pendente", "rejeitado"] else 0,
+                    lista_status,
+                    index=indice_status,
                     key=f"status_sel_{membro['id']}",
                 )
 
@@ -734,7 +742,49 @@ def painel_membros_imobiliaria():
                     st.success("Status atualizado com sucesso.")
                     st.rerun()
 
+        else:
+            st.info("Você não tem permissão para alterar cargos.")
+
         st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def tela_empreendimentos():
+    empreendimentos = listar_empreendimentos()
+
+    st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendimentos</div>', unsafe_allow_html=True)
+
+    if not empreendimentos:
+        st.warning("Nenhum empreendimento cadastrado.")
+    else:
+        for emp in empreendimentos:
+            st.markdown('<div class="gp-member">', unsafe_allow_html=True)
+            st.write(f"**Nome:** {emp.get('nome', '-')}")
+            st.write(f"**Proprietário:** {emp.get('proprietario', '-')}")
+            st.write(f"**Logradouro:** {emp.get('logradouro', '-')}")
+            st.write(f"**Contrato:** {emp.get('contrato_nome', '-')}")
+            st.write(f"**Tabela:** {emp.get('tabela_arquivo', '-')}")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def tela_regras_imobiliaria():
+    regra = buscar_regra_imobiliaria(st.session_state["imobiliaria_id"])
+
+    st.markdown('<div class="gp-card"><div class="gp-section-title">📑 Regras da imobiliária</div>', unsafe_allow_html=True)
+
+    if not regra:
+        st.error("Regra financeira não encontrada.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    st.write(f"**Total comissão:** {float(regra['porcentagem_total_comissao']):.2f}%")
+    st.write(f"**Ato mínimo:** {float(regra['porcentagem_ato_minimo']):.2f}%")
+    st.write(f"**Imobiliária:** {float(regra['porcentagem_imobiliaria']):.2f}%")
+    st.write(f"**Corretor:** {float(regra['porcentagem_corretor']):.2f}%")
+    st.write(f"**Gerente:** {float(regra['porcentagem_gerente']):.2f}%")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -746,26 +796,8 @@ def tela_home():
     st.write(f"Cargo: **{st.session_state['cargo_imobiliaria']}**")
     st.markdown("</div>", unsafe_allow_html=True)
 
-    empreendimentos = listar_empreendimentos()
-    regra = buscar_regra_imobiliaria(st.session_state["imobiliaria_id"])
-
-    st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendimentos disponíveis</div>', unsafe_allow_html=True)
-    if not empreendimentos:
-        st.warning("Nenhum empreendimento cadastrado.")
-    else:
-        for emp in empreendimentos:
-            st.write(f"- {emp['nome']}")
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.markdown('<div class="gp-card"><div class="gp-section-title">📑 Regra da imobiliária</div>', unsafe_allow_html=True)
-    if not regra:
-        st.error("Regra financeira não encontrada.")
-    else:
-        st.write(f"**Total comissão:** {float(regra['porcentagem_total_comissao']):.2f}%")
-        st.write(f"**Ato mínimo:** {float(regra['porcentagem_ato_minimo']):.2f}%")
-        st.write(f"**Imobiliária:** {float(regra['porcentagem_imobiliaria']):.2f}%")
-        st.write(f"**Corretor:** {float(regra['porcentagem_corretor']):.2f}%")
-        st.write(f"**Gerente:** {float(regra['porcentagem_gerente']):.2f}%")
+    st.markdown('<div class="gp-card"><div class="gp-section-title">📌 Resumo</div>', unsafe_allow_html=True)
+    st.write("Use o menu lateral para navegar entre as áreas do sistema.")
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -802,6 +834,24 @@ if not st.session_state.get("imobiliaria_id"):
     tela_escolha_imobiliaria()
     st.stop()
 
-painel_aprovacoes()
-painel_membros_imobiliaria()
-tela_home()
+menu = st.sidebar.radio(
+    "📂 Navegação",
+    [
+        "Início",
+        "Solicitações",
+        "Membros",
+        "Empreendimentos",
+        "Regras",
+    ],
+)
+
+if menu == "Início":
+    tela_home()
+elif menu == "Solicitações":
+    painel_aprovacoes()
+elif menu == "Membros":
+    painel_membros_imobiliaria()
+elif menu == "Empreendimentos":
+    tela_empreendimentos()
+elif menu == "Regras":
+    tela_regras_imobiliaria()
