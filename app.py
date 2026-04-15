@@ -1,6 +1,7 @@
 import base64
 import io
 import os
+import shutil
 import subprocess
 import textwrap
 import zipfile
@@ -537,11 +538,22 @@ def buscar(linha, nomes):
 
 
 def excel_para_pdf(arquivo):
-    subprocess.run(
-        ["libreoffice", "--headless", "--convert-to", "pdf", arquivo],
-        check=False,
-    )
-    return arquivo.replace(".xlsx", ".pdf")
+    libreoffice_path = shutil.which("libreoffice")
+    if not libreoffice_path:
+        return None
+
+    try:
+        subprocess.run(
+            [libreoffice_path, "--headless", "--convert-to", "pdf", arquivo],
+            check=False,
+        )
+        pdf_path = arquivo.replace(".xlsx", ".pdf")
+        if os.path.exists(pdf_path):
+            return pdf_path
+    except Exception:
+        return None
+
+    return None
 
 
 def calcular_idade_em_data(nascimento: date, data_referencia: date) -> int:
@@ -570,7 +582,7 @@ def criar_zip_bytes(arquivos: list[str]) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for arquivo in arquivos:
-            if os.path.exists(arquivo):
+            if arquivo and os.path.exists(arquivo):
                 zf.write(arquivo, arcname=os.path.basename(arquivo))
     buffer.seek(0)
     return buffer.getvalue()
@@ -1189,7 +1201,6 @@ def tela_nova_proposta():
         if abs(parcela_editada - valor_parcela_igual) > 0.01:
             usar_diferente = True
             parcela_diferente = parcela_editada
-
             parcelas_iguais = parcelas - 1
 
             if parcela_diferente > restante:
@@ -1362,9 +1373,11 @@ def tela_nova_proposta():
             pdf_contrato = excel_para_pdf(excel_contrato)
 
             zip_excels = criar_zip_bytes([excel_proposta, excel_contrato])
-            zip_pdfs = criar_zip_bytes([pdf_proposta, pdf_contrato])
 
             st.success("✅ Proposta e contrato gerados com sucesso!")
+
+            if not pdf_proposta or not pdf_contrato:
+                st.warning("Os arquivos em PDF não puderam ser gerados neste ambiente. No Streamlit Cloud, normalmente o LibreOffice não está disponível. Os arquivos em Excel foram gerados normalmente.")
 
             col_down_1, col_down_2 = st.columns(2)
 
@@ -1378,13 +1391,17 @@ def tela_nova_proposta():
                 )
 
             with col_down_2:
-                st.download_button(
-                    "📥 Baixar 2 arquivos em PDF",
-                    data=zip_pdfs,
-                    file_name=f"PDFs_{unidade}.zip",
-                    mime="application/zip",
-                    use_container_width=True,
-                )
+                if pdf_proposta and pdf_contrato:
+                    zip_pdfs = criar_zip_bytes([pdf_proposta, pdf_contrato])
+                    st.download_button(
+                        "📥 Baixar 2 arquivos em PDF",
+                        data=zip_pdfs,
+                        file_name=f"PDFs_{unidade}.zip",
+                        mime="application/zip",
+                        use_container_width=True,
+                    )
+                else:
+                    st.info("PDF indisponível neste ambiente.")
 
         except Exception as e:
             st.error(f"Erro ao gerar proposta e contrato: {e}")
