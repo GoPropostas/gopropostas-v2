@@ -1,4 +1,5 @@
 import base64
+import textwrap
 from datetime import datetime
 from pathlib import Path
 
@@ -45,77 +46,88 @@ def aplicar_tema(imob=None):
 
     st.markdown(
         f"""
-        <style>
-            .stApp {{
-                background: linear-gradient(180deg, {bg_inicio} 0%, {bg_fim} 100%);
-            }}
+<style>
+.stApp {{
+    background: linear-gradient(180deg, {bg_inicio} 0%, {bg_fim} 100%);
+}}
 
-            [data-testid="stSidebar"] {{
-                background: linear-gradient(180deg, {bg_inicio} 0%, {bg_fim} 100%);
-            }}
+[data-testid="stSidebar"] {{
+    background: linear-gradient(180deg, {bg_inicio} 0%, {bg_fim} 100%);
+}}
 
-            .gp-card {{
-                background: #F8FBFD;
-                border-radius: 24px;
-                padding: 22px 24px;
-                box-shadow: 0 12px 28px rgba(0,0,0,0.16);
-                border: 1px solid rgba(12,109,132,0.10);
-                margin-bottom: 18px;
-                color: #062B36 !important;
-            }}
+.gp-card {{
+    background: #F8FBFD;
+    border-radius: 24px;
+    padding: 22px 24px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.16);
+    border: 1px solid rgba(12,109,132,0.10);
+    margin-bottom: 18px;
+}}
 
-            .gp-card * {{
-                color: #062B36 !important;
-            }}
+.gp-card, .gp-card * {{
+    color: #062B36 !important;
+}}
 
-            .gp-card-dark {{
-                background: linear-gradient(135deg, {bg_inicio} 0%, {cor_primaria} 100%);
-                color: white;
-                border-radius: 24px;
-                padding: 22px 24px;
-                box-shadow: 0 12px 28px rgba(0,0,0,0.22);
-                margin-bottom: 18px;
-            }}
+.gp-card-dark {{
+    background: linear-gradient(135deg, {bg_inicio} 0%, {cor_primaria} 100%);
+    color: white;
+    border-radius: 24px;
+    padding: 22px 24px;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.22);
+    margin-bottom: 18px;
+}}
 
-            .gp-card-dark * {{
-                color: white !important;
-            }}
+.gp-card-dark, .gp-card-dark * {{
+    color: white !important;
+}}
 
-            .gp-title {{
-                color: #F4F7FA;
-                font-size: 2rem;
-                font-weight: 800;
-                margin: 0;
-            }}
+.gp-title {{
+    color: #F4F7FA;
+    font-size: 2rem;
+    font-weight: 800;
+    margin: 0;
+}}
 
-            .gp-subtitle {{
-                color: rgba(244,247,250,0.82);
-                font-size: 0.98rem;
-                margin-top: 4px;
-            }}
+.gp-subtitle {{
+    color: rgba(244,247,250,0.82);
+    font-size: 0.98rem;
+    margin-top: 4px;
+}}
 
-            .gp-section-title {{
-                font-size: 1.15rem;
-                font-weight: 800;
-                margin-bottom: 14px;
-            }}
+.gp-section-title {{
+    font-size: 1.15rem;
+    font-weight: 800;
+    margin-bottom: 14px;
+}}
 
-            .stButton > button {{
-                background: linear-gradient(90deg, {cor_secundaria} 0%, {cor_primaria} 100%) !important;
-                color: white !important;
-                border: none !important;
-                border-radius: 14px !important;
-                font-weight: 800 !important;
-                min-height: 46px !important;
-            }}
+.stButton > button {{
+    background: linear-gradient(90deg, {cor_secundaria} 0%, {cor_primaria} 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 14px !important;
+    font-weight: 800 !important;
+    min-height: 46px !important;
+}}
 
-            .stTextInput input,
-            .stNumberInput input,
-            .stTextArea textarea,
-            .stSelectbox div[data-baseweb="select"] > div {{
-                border-radius: 14px !important;
-            }}
-        </style>
+.stTextInput input,
+.stNumberInput input,
+.stTextArea textarea,
+.stSelectbox div[data-baseweb="select"] > div {{
+    border-radius: 14px !important;
+}}
+
+.gp-member {{
+    background: rgba(255,255,255,0.92);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid rgba(12,109,132,0.10);
+}}
+
+.gp-member * {{
+    color: #062B36 !important;
+}}
+</style>
         """,
         unsafe_allow_html=True,
     )
@@ -126,18 +138,16 @@ def render_topbar(imob=None):
     subtitulo = "Sistema multi-imobiliária"
     logo_base64 = img_to_base64(LOGO_PADRAO)
 
-    st.markdown(
-        f"""
-        <div style="margin-bottom:20px;padding:18px 24px;border-radius:24px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:18px;">
-            {"<img src='data:image/png;base64," + logo_base64 + "' style='max-height:78px;border-radius:12px;' />" if logo_base64 else ""}
-            <div>
-                <div class="gp-title">{titulo}</div>
-                <div class="gp-subtitle">{subtitulo}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    html = f"""
+<div style="margin-bottom:20px;padding:18px 24px;border-radius:24px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:18px;">
+    {"<img src='data:image/png;base64," + logo_base64 + "' style='max-height:78px;border-radius:12px;' />" if logo_base64 else ""}
+    <div>
+        <div class="gp-title">{titulo}</div>
+        <div class="gp-subtitle">{subtitulo}</div>
+    </div>
+</div>
+"""
+    st.markdown(textwrap.dedent(html), unsafe_allow_html=True)
 
 
 def init_state():
@@ -220,6 +230,9 @@ def logout():
         st.rerun()
 
 
+# =========================
+# BANCO
+# =========================
 def buscar_profile_por_id(user_id: str):
     resp = (
         get_supabase()
@@ -339,6 +352,18 @@ def listar_solicitacoes_pendentes_por_imobiliaria(imobiliaria_id: str):
     return resp.data or []
 
 
+def listar_membros_imobiliaria(imobiliaria_id: str):
+    resp = (
+        get_supabase()
+        .table("usuarios_imobiliarias")
+        .select("*")
+        .eq("imobiliaria_id", imobiliaria_id)
+        .order("created_at")
+        .execute()
+    )
+    return resp.data or []
+
+
 def aprovar_vinculo(vinculo_id: str, aprovador_id: str, cargo: str):
     return (
         get_supabase()
@@ -361,6 +386,26 @@ def rejeitar_vinculo(vinculo_id: str):
         get_supabase()
         .table("usuarios_imobiliarias")
         .update({"status": "rejeitado"})
+        .eq("id", vinculo_id)
+        .execute()
+    )
+
+
+def alterar_cargo_vinculo(vinculo_id: str, novo_cargo: str):
+    return (
+        get_supabase()
+        .table("usuarios_imobiliarias")
+        .update({"cargo": novo_cargo})
+        .eq("id", vinculo_id)
+        .execute()
+    )
+
+
+def alterar_status_vinculo(vinculo_id: str, novo_status: str):
+    return (
+        get_supabase()
+        .table("usuarios_imobiliarias")
+        .update({"status": novo_status})
         .eq("id", vinculo_id)
         .execute()
     )
@@ -399,6 +444,9 @@ def buscar_regra_imobiliaria(imobiliaria_id: str):
     return resp.data[0] if resp.data else None
 
 
+# =========================
+# AUTH
+# =========================
 def login(email: str, senha: str):
     return get_supabase().auth.sign_in_with_password(
         {
@@ -424,11 +472,33 @@ def cadastrar(nome: str, email: str, senha: str):
             "password": senha,
             "data": {"nome": nome.strip()},
         },
-        timeout=20,
+        timeout=10,
     )
     return resp
 
 
+# =========================
+# PERMISSÕES
+# =========================
+def eh_superadmin():
+    return st.session_state.get("role_global") == "superadmin"
+
+
+def pode_ver_todas():
+    return eh_superadmin() or st.session_state.get("cargo_imobiliaria") == "administrador"
+
+
+def pode_aprovar():
+    return pode_ver_todas() or st.session_state.get("cargo_imobiliaria") == "diretor"
+
+
+def pode_gerenciar_membros():
+    return pode_ver_todas()
+
+
+# =========================
+# TELAS
+# =========================
 def tela_login():
     st.markdown('<div class="gp-card-dark">', unsafe_allow_html=True)
     st.title("🔐 Entrar no sistema")
@@ -515,6 +585,17 @@ def tela_escolha_imobiliaria():
         st.subheader(imob["nome"])
         vinculo = mapa_vinculos.get(imob["id"])
 
+        if eh_superadmin():
+            st.success("Acesso liberado como superadmin.")
+            if st.button(f"Entrar em {imob['nome']}", key=f"entrar_super_{imob['id']}", use_container_width=True):
+                st.session_state["imobiliaria_id"] = imob["id"]
+                st.session_state["imobiliaria_nome"] = imob["nome"]
+                st.session_state["cargo_imobiliaria"] = "administrador"
+                st.session_state["status_vinculo"] = "aprovado"
+                st.rerun()
+            st.divider()
+            continue
+
         if vinculo:
             status = vinculo["status"]
 
@@ -541,14 +622,6 @@ def tela_escolha_imobiliaria():
         st.divider()
 
     st.markdown("</div>", unsafe_allow_html=True)
-
-
-def pode_ver_todas():
-    return st.session_state.get("role_global") == "superadmin" or st.session_state.get("cargo_imobiliaria") == "administrador"
-
-
-def pode_aprovar():
-    return pode_ver_todas() or st.session_state.get("cargo_imobiliaria") == "diretor"
 
 
 def painel_aprovacoes():
@@ -608,6 +681,64 @@ def painel_aprovacoes():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+def painel_membros_imobiliaria():
+    if not st.session_state.get("imobiliaria_id"):
+        return
+
+    membros = listar_membros_imobiliaria(st.session_state["imobiliaria_id"])
+
+    st.markdown('<div class="gp-card"><div class="gp-section-title">👥 Membros da imobiliária</div>', unsafe_allow_html=True)
+
+    if not membros:
+        st.info("Nenhum membro encontrado.")
+        st.markdown("</div>", unsafe_allow_html=True)
+        return
+
+    for membro in membros:
+        nome, email = buscar_nome_email_usuario(membro["user_id"])
+        status_atual = membro.get("status", "")
+        cargo_atual = membro.get("cargo", "")
+
+        st.markdown('<div class="gp-member">', unsafe_allow_html=True)
+        st.write(f"**Nome:** {nome or '-'}")
+        st.write(f"**Email:** {email or '-'}")
+        st.write(f"**Status atual:** {status_atual}")
+        st.write(f"**Cargo atual:** {cargo_atual}")
+
+        if pode_gerenciar_membros():
+            col1, col2 = st.columns(2)
+
+            with col1:
+                novo_cargo = st.selectbox(
+                    f"Novo cargo para {email or membro['user_id']}",
+                    ["corretor", "diretor", "administrador"],
+                    index=["corretor", "diretor", "administrador"].index(cargo_atual) if cargo_atual in ["corretor", "diretor", "administrador"] else 0,
+                    key=f"cargo_sel_{membro['id']}",
+                )
+
+                if st.button("Salvar cargo", key=f"salvar_cargo_{membro['id']}", use_container_width=True):
+                    alterar_cargo_vinculo(membro["id"], novo_cargo)
+                    st.success("Cargo atualizado com sucesso.")
+                    st.rerun()
+
+            with col2:
+                novo_status = st.selectbox(
+                    f"Novo status para {email or membro['user_id']}",
+                    ["aprovado", "pendente", "rejeitado"],
+                    index=["aprovado", "pendente", "rejeitado"].index(status_atual) if status_atual in ["aprovado", "pendente", "rejeitado"] else 0,
+                    key=f"status_sel_{membro['id']}",
+                )
+
+                if st.button("Salvar status", key=f"salvar_status_{membro['id']}", use_container_width=True):
+                    alterar_status_vinculo(membro["id"], novo_status)
+                    st.success("Status atualizado com sucesso.")
+                    st.rerun()
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
 def tela_home():
     st.markdown('<div class="gp-card"><div class="gp-section-title">🏠 Painel inicial</div>', unsafe_allow_html=True)
     st.write(f"Usuário: **{st.session_state['usuario_nome']}**")
@@ -638,6 +769,9 @@ def tela_home():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+# =========================
+# MAIN
+# =========================
 init_state()
 restaurar_sessao()
 
@@ -669,4 +803,5 @@ if not st.session_state.get("imobiliaria_id"):
     st.stop()
 
 painel_aprovacoes()
+painel_membros_imobiliaria()
 tela_home()
