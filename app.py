@@ -1,9 +1,9 @@
 import base64
 import io
 import os
-import shutil
 import subprocess
 import textwrap
+import time
 import zipfile
 from datetime import date, datetime
 from pathlib import Path
@@ -538,20 +538,22 @@ def buscar(linha, nomes):
 
 
 def excel_para_pdf(arquivo):
-    libreoffice_path = shutil.which("libreoffice")
-    if not libreoffice_path:
-        return None
+    pdf = arquivo.replace(".xlsx", ".pdf")
 
     try:
         subprocess.run(
-            [libreoffice_path, "--headless", "--convert-to", "pdf", arquivo],
+            ["libreoffice", "--headless", "--convert-to", "pdf", arquivo],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             check=False,
         )
-        pdf_path = arquivo.replace(".xlsx", ".pdf")
-        if os.path.exists(pdf_path):
-            return pdf_path
     except Exception:
         return None
+
+    for _ in range(5):
+        if os.path.exists(pdf):
+            return pdf
+        time.sleep(1)
 
     return None
 
@@ -1376,9 +1378,6 @@ def tela_nova_proposta():
 
             st.success("✅ Proposta e contrato gerados com sucesso!")
 
-            if not pdf_proposta or not pdf_contrato:
-                st.warning("Os arquivos em PDF não puderam ser gerados neste ambiente. No Streamlit Cloud, normalmente o LibreOffice não está disponível. Os arquivos em Excel foram gerados normalmente.")
-
             col_down_1, col_down_2 = st.columns(2)
 
             with col_down_1:
@@ -1401,7 +1400,7 @@ def tela_nova_proposta():
                         use_container_width=True,
                     )
                 else:
-                    st.info("PDF indisponível neste ambiente.")
+                    st.error("PDF não foi gerado. Verifique se o LibreOffice conseguiu converter os arquivos neste ambiente.")
 
         except Exception as e:
             st.error(f"Erro ao gerar proposta e contrato: {e}")
