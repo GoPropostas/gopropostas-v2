@@ -240,9 +240,6 @@ def logout():
         st.rerun()
 
 
-# =========================
-# BANCO
-# =========================
 def buscar_profile_por_id(user_id: str):
     resp = (
         get_supabase()
@@ -454,9 +451,6 @@ def buscar_regra_imobiliaria(imobiliaria_id: str):
     return resp.data[0] if resp.data else None
 
 
-# =========================
-# AUTH
-# =========================
 def login(email: str, senha: str):
     return get_supabase().auth.sign_in_with_password(
         {
@@ -487,9 +481,6 @@ def cadastrar(nome: str, email: str, senha: str):
     return resp
 
 
-# =========================
-# PERMISSÕES
-# =========================
 def eh_superadmin():
     return st.session_state.get("role_global") == "superadmin"
 
@@ -506,9 +497,6 @@ def pode_gerenciar_membros():
     return pode_ver_todas()
 
 
-# =========================
-# UTILITÁRIOS PROPOSTA
-# =========================
 @st.cache_data
 def carregar_tabela(arquivo, mod_time):
     df = pd.read_excel(arquivo, skiprows=11)
@@ -721,9 +709,6 @@ def preencher_contrato_intermediacao(d, modelo=MODELO_CONTRATO_PADRAO):
     return arquivo
 
 
-# =========================
-# TELAS
-# =========================
 def tela_login():
     st.markdown('<div class="gp-card-dark">', unsafe_allow_html=True)
     st.title("🔐 Entrar no sistema")
@@ -1389,9 +1374,6 @@ def tela_nova_proposta():
             st.error(f"Erro ao gerar proposta e contrato: {e}")
 
 
-# =========================
-# MAIN
-# =========================
 init_state()
 restaurar_sessao()
 
