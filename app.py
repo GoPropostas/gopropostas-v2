@@ -2,10 +2,7 @@ import base64
 import io
 import os
 import subprocess
-import tempfile
 import textwrap
-import time
-import uuid
 import zipfile
 from datetime import date, datetime
 from pathlib import Path
@@ -540,41 +537,11 @@ def buscar(linha, nomes):
 
 
 def excel_para_pdf(arquivo):
-    pdf_esperado = Path(arquivo).with_suffix(".pdf").name
-    pasta_saida = tempfile.mkdtemp(prefix="pdf_saida_")
-
-    try:
-        resultado = subprocess.run(
-            [
-                "libreoffice",
-                "--headless",
-                "--convert-to",
-                "pdf",
-                "--outdir",
-                pasta_saida,
-                arquivo,
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        st.write("Conversão PDF stdout:", resultado.stdout if resultado.stdout else "(vazio)")
-        st.write("Conversão PDF stderr:", resultado.stderr if resultado.stderr else "(vazio)")
-        st.write("Código de retorno:", resultado.returncode)
-
-        pdf_path = os.path.join(pasta_saida, pdf_esperado)
-
-        for _ in range(8):
-            if os.path.exists(pdf_path):
-                return pdf_path
-            time.sleep(1)
-
-        return None
-
-    except Exception as e:
-        st.error(f"Erro ao chamar LibreOffice: {e}")
-        return None
+    subprocess.run(
+        ["libreoffice", "--headless", "--convert-to", "pdf", arquivo],
+        check=False,
+    )
+    return arquivo.replace(".xlsx", ".pdf")
 
 
 def calcular_idade_em_data(nascimento: date, data_referencia: date) -> int:
@@ -599,7 +566,7 @@ def formatar_moeda(valor: float) -> str:
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def criar_zip_bytes(arquivos: list[str]) -> bytes:
+def criar_zip_bytes(arquivos):
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         for arquivo in arquivos:
@@ -704,7 +671,7 @@ def preencher_proposta(d, modelo=MODELO_PROPOSTA_PADRAO):
                 ws[cel] = ""
 
     configurar_impressao(ws, "portrait")
-    arquivo = f"proposta_{uuid.uuid4().hex}.xlsx"
+    arquivo = "proposta.xlsx"
     wb.save(arquivo)
     return arquivo
 
@@ -749,7 +716,7 @@ def preencher_contrato_intermediacao(d, modelo=MODELO_CONTRATO_PADRAO):
     ws["C54"] = d["nome_diretor"]
 
     configurar_impressao(ws, "portrait")
-    arquivo = f"contrato_{uuid.uuid4().hex}.xlsx"
+    arquivo = "contrato_intermediacao.xlsx"
     wb.save(arquivo)
     return arquivo
 
@@ -1390,17 +1357,11 @@ def tela_nova_proposta():
             excel_proposta = preencher_proposta(dados)
             excel_contrato = preencher_contrato_intermediacao(dados)
 
-            st.write("Excel proposta:", excel_proposta)
-            st.write("Excel contrato:", excel_contrato)
-            st.write("Arquivos atuais:", os.listdir())
-
             pdf_proposta = excel_para_pdf(excel_proposta)
             pdf_contrato = excel_para_pdf(excel_contrato)
 
-            st.write("PDF proposta:", pdf_proposta)
-            st.write("PDF contrato:", pdf_contrato)
-
             zip_excels = criar_zip_bytes([excel_proposta, excel_contrato])
+            zip_pdfs = criar_zip_bytes([pdf_proposta, pdf_contrato])
 
             st.success("✅ Proposta e contrato gerados com sucesso!")
 
@@ -1416,17 +1377,13 @@ def tela_nova_proposta():
                 )
 
             with col_down_2:
-                if pdf_proposta and pdf_contrato:
-                    zip_pdfs = criar_zip_bytes([pdf_proposta, pdf_contrato])
-                    st.download_button(
-                        "📥 Baixar 2 arquivos em PDF",
-                        data=zip_pdfs,
-                        file_name=f"PDFs_{unidade}.zip",
-                        mime="application/zip",
-                        use_container_width=True,
-                    )
-                else:
-                    st.error("PDF não foi gerado. Veja os logs acima de stdout, stderr e código de retorno.")
+                st.download_button(
+                    "📥 Baixar 2 arquivos em PDF",
+                    data=zip_pdfs,
+                    file_name=f"PDFs_{unidade}.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                )
 
         except Exception as e:
             st.error(f"Erro ao gerar proposta e contrato: {e}")
