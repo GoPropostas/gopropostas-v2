@@ -4,4 +4,3 @@ requests
 httpx
 pandas
 openpyxl
-aspose-cells-python
