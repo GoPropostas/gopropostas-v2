@@ -20,8 +20,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-subscription"
-EDGE_FUNCTION_CREATE_PIX_URL = "https://kwsnjozsfvhrddxycoco.supabase.co/functions/v1/create-pix"
 LOGO_PATH = "Apresentação de logo moderno e profissional.png"
 CONTRATO_INTERMEDIACAO_MODELO = "Contrato de Intermediação (3).xlsx"
 MODELO_PROPOSTA = "modelo_proposta.xlsx"
@@ -295,7 +293,7 @@ def get_supabase() -> Client:
         st.secrets["SUPABASE_KEY"].strip(),
     )
 
-# ---------------- LOGIN / PERFIL ----------------
+# ---------------- PERFIL / LOGIN ----------------
 def buscar_profile_por_id(user_id: str):
     supabase = get_supabase()
     resp = (
@@ -318,35 +316,6 @@ def buscar_profile_por_email(email: str):
     )
     return resp.data[0] if resp.data else None
 
-def buscar_assinatura(user_id: str):
-    supabase = get_supabase()
-    resp = (
-        supabase.table("assinaturas")
-        .select("*")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-    return resp.data[0] if resp.data else None
-
-def assinatura_ativa_para_acesso(assinatura: dict) -> bool:
-    if not assinatura:
-        return False
-    if not assinatura.get("assinatura_ativa"):
-        return False
-
-    proximo = assinatura.get("proximo_cobranca_em")
-    if not proximo:
-        return bool(assinatura.get("assinatura_ativa"))
-
-    try:
-        proximo_dt = datetime.fromisoformat(str(proximo).replace("Z", "+00:00"))
-        agora = datetime.now(proximo_dt.tzinfo) if proximo_dt.tzinfo else datetime.now()
-        return proximo_dt >= agora
-    except Exception:
-        return bool(assinatura.get("assinatura_ativa"))
-
 def atualizar_profile_config(user_id: str, nome: str, nome_imobiliaria: str, nome_gerente: str, nome_diretor: str):
     return (
         get_supabase()
@@ -360,44 +329,6 @@ def atualizar_profile_config(user_id: str, nome: str, nome_imobiliaria: str, nom
         .eq("id", user_id)
         .execute()
     )
-
-def criar_assinatura_mp(user_id: str, email: str):
-    headers = {"Content-Type": "application/json"}
-    payload = {"user_id": user_id, "email": email}
-
-    resp = requests.post(
-        EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL,
-        json=payload,
-        headers=headers,
-        timeout=30,
-    )
-
-    try:
-        return resp.json()
-    except Exception:
-        return {
-            "error": f"Resposta inválida da função: status {resp.status_code}",
-            "raw_text": resp.text,
-        }
-
-def criar_pix(user_id: str, email: str):
-    headers = {"Content-Type": "application/json"}
-    payload = {"user_id": user_id, "email": email}
-
-    resp = requests.post(
-        EDGE_FUNCTION_CREATE_PIX_URL,
-        json=payload,
-        headers=headers,
-        timeout=30,
-    )
-
-    try:
-        return resp.json()
-    except Exception:
-        return {
-            "error": f"Resposta inválida da função PIX: status {resp.status_code}",
-            "raw_text": resp.text,
-        }
 
 def login_com_supabase(email: str, senha: str):
     supabase = get_supabase()
@@ -481,15 +412,21 @@ def listar_minhas_imobiliarias(user_id: str):
     return resp.data or []
 
 def listar_pendentes_imobiliarias():
+    # Primeiro pega as relações pendentes
     resp = (
         get_supabase()
         .table("usuarios_imobiliarias")
-        .select("*, imobiliarias(*), profiles!usuarios_imobiliarias_user_id_fkey(*)")
+        .select("*, imobiliarias(*)")
         .eq("status", "pendente")
         .order("created_at")
         .execute()
     )
-    return resp.data or []
+    relacoes = resp.data or []
+
+    # Depois enriquece com profile do usuário
+    for r in relacoes:
+        r["profile_usuario"] = buscar_profile_por_id(r["user_id"])
+    return relacoes
 
 def aprovar_usuario_imobiliaria(relacao_id: str, cargo: str):
     return (
@@ -669,7 +606,7 @@ def tela_login():
 
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------- CONTROLE LOGIN ----------------
+# ---------------- INÍCIO ----------------
 init_auth_state()
 tentar_restaurar_sessao()
 
@@ -677,72 +614,7 @@ if not st.session_state["logado"]:
     tela_login()
     st.stop()
 
-assinatura = buscar_assinatura(st.session_state["usuario_id"])
 eh_admin = st.session_state.get("tipo") == "admin"
-acesso_liberado = eh_admin or assinatura_ativa_para_acesso(assinatura)
-
-if not acesso_liberado:
-    st.markdown("""
-    <div class="gp-card-dark">
-        <div style="font-size:1.5rem;font-weight:800;">💳 Assinatura GoPropostas</div>
-        <div style="margin-top:8px;font-size:1rem;opacity:0.92;">
-            Escolha a melhor forma para acessar o sistema:
-        </div>
-        <div style="margin-top:16px;font-size:1.95rem;font-weight:900;">
-            R$ 15,00 <span style="font-size:1rem;font-weight:500;">/ mês</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if assinatura:
-        st.info(f"Status atual: {assinatura.get('status', 'pendente')}")
-        if assinatura.get("proximo_cobranca_em"):
-            st.caption(f"Validade / próxima cobrança: {assinatura.get('proximo_cobranca_em')}")
-
-    col_pag_1, col_pag_2 = st.columns(2)
-
-    with col_pag_1:
-        st.markdown('<div class="gp-card">', unsafe_allow_html=True)
-        st.markdown('<div class="gp-section-title">💳 Assinatura no cartão</div>', unsafe_allow_html=True)
-        st.write("Cobrança recorrente automática mensal.")
-        if st.button("Assinar no cartão", use_container_width=True):
-            try:
-                data = criar_assinatura_mp(
-                    st.session_state["usuario_id"],
-                    st.session_state["usuario_email"]
-                )
-                link = data.get("init_point") or data.get("sandbox_init_point")
-
-                if link:
-                    st.link_button("👉 Ir para pagamento", link, use_container_width=True)
-                else:
-                    st.error(f"Erro ao gerar link de pagamento: {data}")
-            except Exception as e:
-                st.error(f"Erro ao iniciar assinatura: {e}")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col_pag_2:
-        st.markdown('<div class="gp-card">', unsafe_allow_html=True)
-        st.markdown('<div class="gp-section-title">🧾 PIX mensal</div>', unsafe_allow_html=True)
-        st.write("Pague manualmente via PIX e tenha acesso por 30 dias.")
-        if st.button("Gerar PIX", use_container_width=True):
-            try:
-                data = criar_pix(
-                    st.session_state["usuario_id"],
-                    st.session_state["usuario_email"]
-                )
-
-                if "qr_code_base64" in data:
-                    st.image(f"data:image/png;base64,{data['qr_code_base64']}")
-                    st.code(data["qr_code"])
-                    st.success("Escaneie ou copie o PIX.")
-                else:
-                    st.error(f"Erro ao gerar PIX: {data}")
-            except Exception as e:
-                st.error(f"Erro ao gerar PIX: {e}")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.stop()
 
 st.sidebar.write(f"👤 {st.session_state['usuario_nome']}")
 st.sidebar.write(f"📧 {st.session_state['usuario_email']}")
@@ -853,7 +725,7 @@ if eh_admin:
             st.info("Nenhuma solicitação pendente.")
         else:
             for p in pendentes:
-                perfil = p.get("profiles") or {}
+                perfil = p.get("profile_usuario") or {}
                 imob = p.get("imobiliarias") or {}
 
                 st.markdown('<div class="gp-card">', unsafe_allow_html=True)
@@ -905,7 +777,7 @@ empreendimentos = {
     }
 }
 
-# ---------------- UTILITÁRIOS ----------------
+# ---------------- UTILITÁRIOS PROPOSTA ----------------
 @st.cache_data
 def carregar_tabela(arquivo, mod_time):
     df = pd.read_excel(arquivo, skiprows=11)
