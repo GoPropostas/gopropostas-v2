@@ -2,8 +2,10 @@ import base64
 import io
 import os
 import subprocess
+import tempfile
 import textwrap
 import time
+import uuid
 import zipfile
 from datetime import date, datetime
 from pathlib import Path
@@ -538,24 +540,41 @@ def buscar(linha, nomes):
 
 
 def excel_para_pdf(arquivo):
-    pdf = arquivo.replace(".xlsx", ".pdf")
+    pdf_esperado = Path(arquivo).with_suffix(".pdf").name
+    pasta_saida = tempfile.mkdtemp(prefix="pdf_saida_")
 
     try:
-        subprocess.run(
-            ["libreoffice", "--headless", "--convert-to", "pdf", arquivo],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+        resultado = subprocess.run(
+            [
+                "libreoffice",
+                "--headless",
+                "--convert-to",
+                "pdf",
+                "--outdir",
+                pasta_saida,
+                arquivo,
+            ],
+            capture_output=True,
+            text=True,
             check=False,
         )
-    except Exception:
+
+        st.write("Conversão PDF stdout:", resultado.stdout if resultado.stdout else "(vazio)")
+        st.write("Conversão PDF stderr:", resultado.stderr if resultado.stderr else "(vazio)")
+        st.write("Código de retorno:", resultado.returncode)
+
+        pdf_path = os.path.join(pasta_saida, pdf_esperado)
+
+        for _ in range(8):
+            if os.path.exists(pdf_path):
+                return pdf_path
+            time.sleep(1)
+
         return None
 
-    for _ in range(5):
-        if os.path.exists(pdf):
-            return pdf
-        time.sleep(1)
-
-    return None
+    except Exception as e:
+        st.error(f"Erro ao chamar LibreOffice: {e}")
+        return None
 
 
 def calcular_idade_em_data(nascimento: date, data_referencia: date) -> int:
@@ -685,7 +704,7 @@ def preencher_proposta(d, modelo=MODELO_PROPOSTA_PADRAO):
                 ws[cel] = ""
 
     configurar_impressao(ws, "portrait")
-    arquivo = "proposta.xlsx"
+    arquivo = f"proposta_{uuid.uuid4().hex}.xlsx"
     wb.save(arquivo)
     return arquivo
 
@@ -730,7 +749,7 @@ def preencher_contrato_intermediacao(d, modelo=MODELO_CONTRATO_PADRAO):
     ws["C54"] = d["nome_diretor"]
 
     configurar_impressao(ws, "portrait")
-    arquivo = "contrato_intermediacao.xlsx"
+    arquivo = f"contrato_{uuid.uuid4().hex}.xlsx"
     wb.save(arquivo)
     return arquivo
 
@@ -1371,8 +1390,15 @@ def tela_nova_proposta():
             excel_proposta = preencher_proposta(dados)
             excel_contrato = preencher_contrato_intermediacao(dados)
 
+            st.write("Excel proposta:", excel_proposta)
+            st.write("Excel contrato:", excel_contrato)
+            st.write("Arquivos atuais:", os.listdir())
+
             pdf_proposta = excel_para_pdf(excel_proposta)
             pdf_contrato = excel_para_pdf(excel_contrato)
+
+            st.write("PDF proposta:", pdf_proposta)
+            st.write("PDF contrato:", pdf_contrato)
 
             zip_excels = criar_zip_bytes([excel_proposta, excel_contrato])
 
@@ -1400,7 +1426,7 @@ def tela_nova_proposta():
                         use_container_width=True,
                     )
                 else:
-                    st.error("PDF não foi gerado. Verifique se o LibreOffice conseguiu converter os arquivos neste ambiente.")
+                    st.error("PDF não foi gerado. Veja os logs acima de stdout, stderr e código de retorno.")
 
         except Exception as e:
             st.error(f"Erro ao gerar proposta e contrato: {e}")
