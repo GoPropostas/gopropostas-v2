@@ -3,4 +3,4 @@ pandas
 openpyxl
 requests
 supabase
-aspose-cells
+aspose-cells-python
