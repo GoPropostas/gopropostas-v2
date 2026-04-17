@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 st.set_page_config(page_title="GoPropostas", layout="wide")
 
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_KEY = st.secrets["sb_publishable_biLV7LNIg-dUb-U4T4vmMQ_GGU-7KbC"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 MP_ACCESS_TOKEN = st.secrets["APP_USR-5378749537079523-041313-d9c1a36332259190e27ab84926066040-289895632"]
 
 WEBHOOK_URL = f"{SUPABASE_URL}/functions/v1/mercadopago-webhook"
