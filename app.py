@@ -24,7 +24,9 @@ CONTRATO_INTERMEDIACAO_MODELO = "Contrato de Intermediação (3).xlsx"
 MODELO_PROPOSTA = "modelo_proposta.xlsx"
 
 
-# ---------------- VISUAL ----------------
+# =========================
+# VISUAL
+# =========================
 def img_to_base64(path: str) -> str:
     if not Path(path).exists():
         return ""
@@ -211,6 +213,25 @@ st.markdown("""
         -webkit-text-fill-color: #062B36 !important;
         caret-color: #062B36 !important;
     }
+
+    .stTextInput > div > div > input::placeholder,
+    .stNumberInput input::placeholder,
+    .stDateInput input::placeholder,
+    .stTextArea textarea::placeholder,
+    div[data-baseweb="input"] input::placeholder,
+    div[data-baseweb="base-input"] input::placeholder {
+        color: #6B7C85 !important;
+        opacity: 1 !important;
+    }
+
+    .stSelectbox div[data-baseweb="select"] * {
+        color: #062B36 !important;
+    }
+
+    .stDateInput svg,
+    .stSelectbox svg {
+        fill: #062B36 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -227,7 +248,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-# ---------------- SUPABASE ----------------
+# =========================
+# SUPABASE
+# =========================
 @st.cache_resource
 def get_supabase() -> Client:
     return create_client(
@@ -236,7 +259,9 @@ def get_supabase() -> Client:
     )
 
 
-# ---------------- PERFIL / LOGIN ----------------
+# =========================
+# PERFIL / LOGIN
+# =========================
 def buscar_profile_por_id(user_id: str):
     resp = (
         get_supabase()
@@ -305,7 +330,9 @@ def cadastrar_com_supabase(
     })
 
 
-# ---------------- IMOBILIÁRIAS / APROVAÇÃO ----------------
+# =========================
+# IMOBILIÁRIAS / APROVAÇÃO
+# =========================
 def listar_imobiliarias():
     resp = (
         get_supabase()
@@ -427,7 +454,9 @@ def rejeitar_usuario_imobiliaria(relacao_id: str):
     )
 
 
-# ---------------- PROPOSTAS ----------------
+# =========================
+# PROPOSTAS
+# =========================
 def salvar_proposta_bd(dados: dict):
     return (
         get_supabase()
@@ -437,7 +466,47 @@ def salvar_proposta_bd(dados: dict):
     )
 
 
-# ---------------- CONTROLE LOGIN ----------------
+def listar_propostas_usuario(user_id: str, imobiliaria_id: str | None = None):
+    query = (
+        get_supabase()
+        .table("propostas")
+        .select("*")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+    )
+
+    if imobiliaria_id:
+        query = query.eq("imobiliaria_id", imobiliaria_id)
+
+    resp = query.execute()
+    return resp.data or []
+
+
+def buscar_proposta_por_id(proposta_id: str):
+    resp = (
+        get_supabase()
+        .table("propostas")
+        .select("*")
+        .eq("id", proposta_id)
+        .limit(1)
+        .execute()
+    )
+    return resp.data[0] if resp.data else None
+
+
+def atualizar_proposta_bd(proposta_id: str, dados: dict):
+    return (
+        get_supabase()
+        .table("propostas")
+        .update(dados)
+        .eq("id", proposta_id)
+        .execute()
+    )
+
+
+# =========================
+# ESTADO
+# =========================
 def init_auth_state():
     defaults = {
         "logado": False,
@@ -453,10 +522,73 @@ def init_auth_state():
         "imobiliaria_status": "",
         "cargo_imobiliaria": "",
         "imobiliaria_escolhida_manualmente": False,
+        "proposta_em_edicao_id": "",
+        "proposta_carregada": {},
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
             st.session_state[chave] = valor
+
+
+def init_form_state():
+    defaults = {
+        "emp": "Frei Galvão",
+        "lote": None,
+        "nome": "",
+        "cpf": "",
+        "rg": "",
+        "tel": "",
+        "fixo": "",
+        "nac": "",
+        "prof": "",
+        "fonepref": "",
+        "civil": "",
+        "renda": "",
+        "email": "",
+        "conj": "",
+        "cpf2": "",
+        "rg2": "",
+        "tel2": "",
+        "fixo2": "",
+        "nac2": "",
+        "prof2": "",
+        "fone2": "",
+        "civil2": "",
+        "renda2": "",
+        "entrada": 0.0,
+        "pers": False,
+        "ato_manual": 0.0,
+        "parc": 1,
+        "diff": 0.0,
+    }
+    for chave, valor in defaults.items():
+        if chave not in st.session_state:
+            st.session_state[chave] = valor
+
+    if "data_nascimento" not in st.session_state:
+        st.session_state["data_nascimento"] = date(1980, 1, 1)
+    if "venc_emp" not in st.session_state:
+        st.session_state["venc_emp"] = date.today()
+    if "venc_parc" not in st.session_state:
+        st.session_state["venc_parc"] = date.today()
+    if "venc_saldo" not in st.session_state:
+        st.session_state["venc_saldo"] = date.today()
+    if "data_ato" not in st.session_state:
+        st.session_state["data_ato"] = date.today()
+    if "data_parc_entrada" not in st.session_state:
+        st.session_state["data_parc_entrada"] = date.today()
+    if "data_parc_dif" not in st.session_state:
+        st.session_state["data_parc_dif"] = date.today()
+    if "data_diff" not in st.session_state:
+        st.session_state["data_diff"] = date.today()
+    if "data_contrato_intermediacao" not in st.session_state:
+        st.session_state["data_contrato_intermediacao"] = date.today()
+    if "pct_imobiliaria" not in st.session_state:
+        st.session_state["pct_imobiliaria"] = 2.0
+    if "pct_corretor" not in st.session_state:
+        st.session_state["pct_corretor"] = 2.0
+    if "pct_gerente" not in st.session_state:
+        st.session_state["pct_gerente"] = 1.0
 
 
 def aplicar_login(profile: dict):
@@ -511,6 +643,108 @@ def logout():
             del st.session_state[chave]
 
         st.rerun()
+
+
+def parse_date_br(valor):
+    if not valor:
+        return None
+    if isinstance(valor, date):
+        return valor
+    try:
+        return datetime.strptime(str(valor), "%d/%m/%Y").date()
+    except Exception:
+        return None
+
+
+def carregar_proposta_no_formulario(proposta: dict):
+    if not proposta:
+        return
+
+    st.session_state["proposta_em_edicao_id"] = proposta.get("id", "")
+    st.session_state["proposta_carregada"] = proposta
+
+    if proposta.get("empreendimento"):
+        st.session_state["emp"] = proposta.get("empreendimento")
+
+    unidade = proposta.get("unidade") or proposta.get("lote")
+    if unidade:
+        st.session_state["lote"] = unidade
+
+    mapa = {
+        "nome": proposta.get("cliente_nome", ""),
+        "cpf": proposta.get("cpf", ""),
+        "rg": proposta.get("rg", ""),
+        "tel": proposta.get("telefone", ""),
+        "fixo": proposta.get("fixo", ""),
+        "nac": proposta.get("nacionalidade", ""),
+        "prof": proposta.get("profissao", ""),
+        "fonepref": proposta.get("fone_pref", ""),
+        "civil": proposta.get("estado_civil", ""),
+        "renda": proposta.get("renda", ""),
+        "email": proposta.get("email", ""),
+        "conj": proposta.get("conjuge", ""),
+        "cpf2": proposta.get("cpf2", ""),
+        "rg2": proposta.get("rg2", ""),
+        "tel2": proposta.get("tel2", ""),
+        "fixo2": proposta.get("fixo2", ""),
+        "nac2": proposta.get("nac2", ""),
+        "prof2": proposta.get("prof2", ""),
+        "fone2": proposta.get("fone2", ""),
+        "civil2": proposta.get("civil2", ""),
+        "renda2": proposta.get("renda2", ""),
+        "entrada": float(proposta.get("entrada_cliente", 0) or 0),
+        "ato_manual": float(proposta.get("ato", 0) or 0),
+        "parc": int(proposta.get("parcelas_iguais", 1) or 1),
+        "diff": float(proposta.get("parcela_diferente", 0) or 0),
+        "pers": bool(proposta.get("usar_diferente", False) or (proposta.get("ato", 0) or 0) > 0),
+        "pct_imobiliaria": float(proposta.get("porcentagem_imobiliaria", st.session_state.get("pct_imobiliaria", 2.0)) or 0),
+        "pct_corretor": float(proposta.get("porcentagem_corretor", st.session_state.get("pct_corretor", 2.0)) or 0),
+        "pct_gerente": float(proposta.get("porcentagem_gerente", st.session_state.get("pct_gerente", 1.0)) or 0),
+    }
+
+    for chave, valor in mapa.items():
+        st.session_state[chave] = valor
+
+    data_nascimento = parse_date_br(proposta.get("data_nascimento"))
+    if data_nascimento:
+        st.session_state["data_nascimento"] = data_nascimento
+
+    for campo_state, campo_bd in [
+        ("venc_emp", "data_venc_emp"),
+        ("venc_parc", "data_parcelas"),
+        ("venc_saldo", "data_saldo"),
+        ("data_ato", "data_ato"),
+        ("data_parc_entrada", "data_parc_entrada"),
+        ("data_parc_dif", "data_parcela_diferente_manual"),
+        ("data_diff", "data_parcela_diferente_manual"),
+        ("data_contrato_intermediacao", "data_contrato_intermediacao"),
+    ]:
+        valor_data = parse_date_br(proposta.get(campo_bd))
+        if valor_data:
+            st.session_state[campo_state] = valor_data
+
+
+def limpar_formulario():
+    st.session_state["proposta_em_edicao_id"] = ""
+    st.session_state["proposta_carregada"] = {}
+    for chave in [
+        "nome", "cpf", "rg", "tel", "fixo", "nac", "prof", "fonepref", "civil", "renda", "email",
+        "conj", "cpf2", "rg2", "tel2", "fixo2", "nac2", "prof2", "fone2", "civil2", "renda2",
+        "entrada", "ato_manual", "diff"
+    ]:
+        st.session_state[chave] = "" if chave not in ["entrada", "ato_manual", "diff"] else 0.0
+
+    st.session_state["pers"] = False
+    st.session_state["parc"] = 1
+    st.session_state["data_nascimento"] = date(1980, 1, 1)
+    st.session_state["venc_emp"] = date.today()
+    st.session_state["venc_parc"] = date.today()
+    st.session_state["venc_saldo"] = date.today()
+    st.session_state["data_ato"] = date.today()
+    st.session_state["data_parc_entrada"] = date.today()
+    st.session_state["data_parc_dif"] = date.today()
+    st.session_state["data_diff"] = date.today()
+    st.session_state["data_contrato_intermediacao"] = date.today()
 
 
 def tela_login():
@@ -597,8 +831,11 @@ def tela_login():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-# ---------------- INÍCIO ----------------
+# =========================
+# INÍCIO
+# =========================
 init_auth_state()
+init_form_state()
 tentar_restaurar_sessao()
 
 if not st.session_state["logado"]:
@@ -607,13 +844,14 @@ if not st.session_state["logado"]:
 
 eh_admin = st.session_state.get("tipo") == "admin"
 
-st.sidebar.write(f"👤 {st.session_state['usuario_nome']}")
-st.sidebar.write(f"📧 {st.session_state['usuario_email']}")
-st.sidebar.write(f"🔑 {st.session_state['tipo']}")
+st.sidebar.markdown("## 👤 Conta")
+st.sidebar.write(st.session_state["usuario_nome"])
+st.sidebar.caption(st.session_state["usuario_email"])
+st.sidebar.caption(f"Perfil: {st.session_state['tipo']}")
 
 # ---------------- SELEÇÃO DE IMOBILIÁRIA ----------------
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🏢 Imobiliária")
+st.sidebar.markdown("## 🏢 Imobiliária ativa")
 
 minhas_relacoes = listar_minhas_imobiliarias(st.session_state["usuario_id"])
 minhas_aprovadas = listar_imobiliarias_aprovadas_usuario(st.session_state["usuario_id"])
@@ -667,9 +905,6 @@ else:
                 st.session_state["imobiliaria_status"] = relacao_ativa["status"]
                 st.session_state["cargo_imobiliaria"] = relacao_ativa["cargo"]
                 st.session_state["imobiliaria_escolhida_manualmente"] = True
-
-                st.sidebar.caption(f"Status: {relacao_ativa['status']}")
-                st.sidebar.caption(f"Cargo: {relacao_ativa['cargo']}")
         else:
             st.session_state["imobiliaria_id"] = ""
             st.session_state["imobiliaria_nome"] = ""
@@ -684,7 +919,13 @@ else:
         st.session_state["cargo_imobiliaria"] = ""
         st.session_state["imobiliaria_escolhida_manualmente"] = False
 
-st.sidebar.markdown("### 📄 Minhas imobiliárias")
+if st.session_state.get("imobiliaria_nome"):
+    st.sidebar.success(f"Ativa: {st.session_state['imobiliaria_nome']}")
+    st.sidebar.caption(f"Status: {st.session_state.get('imobiliaria_status', '-')}")
+    st.sidebar.caption(f"Cargo: {st.session_state.get('cargo_imobiliaria', '-')}")
+
+st.sidebar.markdown("---")
+st.sidebar.markdown("## 📄 Minhas imobiliárias")
 if minhas_relacoes:
     for r in minhas_relacoes:
         nome_r = r["imobiliarias"]["nome"] if r.get("imobiliarias") else "-"
@@ -693,7 +934,8 @@ else:
     st.sidebar.caption("Nenhuma imobiliária vinculada")
 
 if not eh_admin:
-    st.sidebar.markdown("### ➕ Solicitar nova imobiliária")
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("## ➕ Solicitar nova imobiliária")
     todas_imob = listar_imobiliarias()
 
     ids_ja_vinculados = {r["imobiliaria_id"] for r in minhas_relacoes}
@@ -719,10 +961,17 @@ if not eh_admin:
     else:
         st.sidebar.caption("Nenhuma nova imobiliária disponível.")
 
+st.sidebar.markdown("---")
+st.sidebar.markdown("## 🧰 Ações")
 if st.sidebar.button("⚙️ Configurações", use_container_width=True):
     st.session_state["abrir_configuracoes"] = not st.session_state.get("abrir_configuracoes", False)
 
 logout()
+
+if eh_admin:
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("## 🔑 Administração")
+    st.sidebar.caption("Aprovação de usuários na tela principal.")
 
 if st.session_state.get("abrir_configuracoes", False):
     profile = buscar_profile_por_id(st.session_state["usuario_id"])
@@ -792,7 +1041,7 @@ if eh_admin:
 
                 st.markdown("</div>", unsafe_allow_html=True)
 
-# ---------------- BLOQUEIO DE ACESSO POR IMOBILIÁRIA ----------------
+# ---------------- BLOQUEIO DE ACESSO ----------------
 if not eh_admin:
     if not minhas_aprovadas:
         st.warning("Você ainda não possui nenhuma imobiliária aprovada.")
@@ -823,7 +1072,59 @@ porcentagem_imobiliaria_padrao = float(imob_bd.get("porcentagem_imobiliaria", 2.
 porcentagem_corretor_padrao = float(imob_bd.get("porcentagem_corretor", 2.00)) if imob_bd else 2.00
 porcentagem_gerente_padrao = float(imob_bd.get("porcentagem_gerente", 1.00)) if imob_bd else 1.00
 
-# ---------------- EMPREENDIMENTOS ----------------
+st.session_state["pct_imobiliaria"] = porcentagem_imobiliaria_padrao
+st.session_state["pct_corretor"] = porcentagem_corretor_padrao
+st.session_state["pct_gerente"] = porcentagem_gerente_padrao
+
+# =========================
+# HISTÓRICO
+# =========================
+st.markdown('<div class="gp-card"><div class="gp-section-title">📚 Histórico de propostas</div>', unsafe_allow_html=True)
+
+propostas_usuario = listar_propostas_usuario(
+    st.session_state["usuario_id"],
+    st.session_state.get("imobiliaria_id")
+)
+
+if propostas_usuario:
+    opcoes_propostas = {
+        f"{p.get('cliente_nome', 'Sem nome')} | {p.get('empreendimento', '-')} | {p.get('lote', '-')} | {str(p.get('created_at', ''))[:10]}": p["id"]
+        for p in propostas_usuario
+    }
+
+    proposta_label = st.selectbox(
+        "Selecione uma proposta já gerada para carregar",
+        ["Nenhuma"] + list(opcoes_propostas.keys()),
+        key="historico_propostas_select"
+    )
+
+    col_hist_1, col_hist_2 = st.columns(2)
+
+    with col_hist_1:
+        if proposta_label != "Nenhuma" and st.button("Carregar proposta", use_container_width=True):
+            proposta_id = opcoes_propostas[proposta_label]
+            proposta = buscar_proposta_por_id(proposta_id)
+            if proposta:
+                carregar_proposta_no_formulario(proposta)
+                st.success("Proposta carregada.")
+                st.rerun()
+
+    with col_hist_2:
+        if st.session_state.get("proposta_em_edicao_id") and st.button("Limpar proposta carregada", use_container_width=True):
+            limpar_formulario()
+            st.success("Formulário limpo.")
+            st.rerun()
+else:
+    st.caption("Nenhuma proposta encontrada para esta imobiliária.")
+
+if st.session_state.get("proposta_em_edicao_id"):
+    st.info("Você está editando uma proposta já existente.")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# =========================
+# EMPREENDIMENTOS
+# =========================
 empreendimentos = {
     "Frei Galvão": {
         "proprietario": "Frei Galvão empreendimentos imobiliários",
@@ -834,255 +1135,6 @@ empreendimentos = {
     }
 }
 
-# ---------------- UTILITÁRIOS PROPOSTA ----------------
-@st.cache_data
-def carregar_tabela(arquivo, mod_time):
-    df = pd.read_excel(arquivo, skiprows=11)
-    df.columns = df.columns.str.strip().str.lower()
-    return df
-
-
-def limpar(valor):
-    if pd.isna(valor):
-        return 0.0
-    if isinstance(valor, (int, float)):
-        return float(valor)
-    texto = str(valor).replace("R$", "").replace(".", "").replace(",", ".")
-    try:
-        return float(texto)
-    except Exception:
-        return 0.0
-
-
-def buscar(linha, nomes):
-    for col in linha.index:
-        for nome in nomes:
-            if nome.lower() in col.lower():
-                return limpar(linha[col])
-    return 0.0
-
-
-def excel_para_pdf(arquivo):
-    subprocess.run(
-        ["libreoffice", "--headless", "--convert-to", "pdf", arquivo],
-        check=False,
-    )
-    return arquivo.replace(".xlsx", ".pdf")
-
-
-def calcular_idade_em_data(nascimento: date, data_referencia: date) -> int:
-    return data_referencia.year - nascimento.year - (
-        (data_referencia.month, data_referencia.day) < (nascimento.month, nascimento.day)
-    )
-
-
-def adicionar_meses(data_base: date, meses: int) -> date:
-    ano = data_base.year + (data_base.month - 1 + meses) // 12
-    mes = (data_base.month - 1 + meses) % 12 + 1
-    ultimo_dia = [
-        31,
-        29 if (ano % 4 == 0 and (ano % 100 != 0 or ano % 400 == 0)) else 28,
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31
-    ][mes - 1]
-    dia = min(data_base.day, ultimo_dia)
-    return date(ano, mes, dia)
-
-
-def formatar_moeda(valor: float) -> str:
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-
-def criar_zip_bytes(arquivos: list[str]) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for arquivo in arquivos:
-            if os.path.exists(arquivo):
-                zf.write(arquivo, arcname=os.path.basename(arquivo))
-    buffer.seek(0)
-    return buffer.getvalue()
-
-
-def configurar_impressao(ws, orientation="portrait"):
-    ws.page_setup.orientation = orientation
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.print_options.horizontalCentered = True
-    ws.print_options.verticalCentered = False
-
-
-# ---------------- EXCEL PROPOSTA ----------------
-def preencher_proposta(d, modelo=MODELO_PROPOSTA):
-    wb = load_workbook(modelo)
-    ws = wb.active
-
-    ws["E5"] = d["nome"]
-    ws["D6"] = d["cpf"]
-    ws["J6"] = d["telefone"]
-    ws["O6"] = d["fixo"]
-    ws["D7"] = d["nacionalidade"]
-    ws["J7"] = d["profissao"]
-    ws["P7"] = d["fone_pref"]
-    ws["D8"] = d["estado_civil"]
-    ws["O8"] = d["renda"]
-    ws["E9"] = d["email"]
-
-    ws["G11"] = d["conjuge"]
-    ws["D13"] = d["cpf2"]
-    ws["J13"] = d["tel2"]
-    ws["O13"] = d["fixo2"]
-    ws["D14"] = d["nac2"]
-    ws["J14"] = d["prof2"]
-    ws["P14"] = d["fone2"]
-    ws["D15"] = d["civil2"]
-    ws["O15"] = d["renda2"]
-
-    ws["G18"] = d["proprietario"]
-    ws["G19"] = d["empreendimento"]
-    ws["C20"] = d["logradouro"]
-    ws["I20"] = d["unidade"]
-    ws["Q20"] = d["area"]
-
-    ws["C21"] = d["valor_negocio"]
-    ws["J21"] = d["entrada_total"]
-    ws["O21"] = d["valor_imovel"]
-
-    ws["B24"] = 1
-    ws["C24"] = d["entrada_imovel"]
-    ws["G24"] = "Única"
-    ws["K24"] = d["data_venc_emp"]
-
-    ws["B25"] = "36x"
-    ws["C25"] = d["parcela_36"]
-    ws["G25"] = "Mensal"
-    ws["K25"] = d["data_parcelas"]
-
-    ws["B26"] = 1
-    ws["C26"] = d["saldo"]
-    ws["G26"] = "Única"
-    ws["K26"] = d["data_saldo"]
-
-    ws["P24"] = "Fixo"
-    ws["P25"] = "Reajustável"
-    ws["P26"] = "Reajustável"
-
-    ws["B33"] = 1
-    ws["C33"] = d["entrada_cliente"]
-    ws["G33"] = "Única"
-    ws["P33"] = "À vista"
-    ws["K33"] = d["data_ato"]
-    ws["K33"].alignment = Alignment(horizontal="center", vertical="center")
-
-    if d["entrada_quitada"]:
-        ws["B34"] = ""
-        ws["C34"] = ""
-        ws["G34"] = ""
-        ws["P34"] = ""
-        ws["K34"] = ""
-        ws["B35"] = ""
-        ws["C35"] = ""
-        ws["G35"] = ""
-        ws["P35"] = ""
-        ws["K35"] = ""
-    else:
-        ws["B34"] = d["parcelas_iguais"]
-        ws["C34"] = d["valor_parcela_igual"]
-        ws["G34"] = "Mensal" if d["parcelas_iguais"] > 0 else ""
-        ws["P34"] = "Fixo"
-        ws["K34"] = d["data_parc_entrada"]
-        ws["K34"].alignment = Alignment(horizontal="center", vertical="center")
-
-        if d["usar_diferente"]:
-            ws["B35"] = 1
-            ws["C35"] = d["parcela_diferente"]
-            ws["G35"] = "Única"
-            ws["P35"] = "Fixa"
-            ws["K35"] = d["data_parcela_diferente_manual"]
-
-            for cel in ["B35", "G35", "K35", "P35"]:
-                ws[cel].alignment = Alignment(horizontal="center", vertical="center")
-        else:
-            ws["B35"] = ""
-            ws["C35"] = ""
-            ws["G35"] = ""
-            ws["P35"] = ""
-            ws["K35"] = ""
-
-    configurar_impressao(ws, "portrait")
-
-    arquivo = "proposta.xlsx"
-    wb.save(arquivo)
-    return arquivo
-
-
-# ---------------- EXCEL CONTRATO ----------------
-def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
-    wb = load_workbook(modelo)
-    ws = wb.active
-
-    ws["C5"] = d["nome"]
-    ws["C6"] = d["conjuge"]
-    ws["I5"] = d["cpf"]
-    ws["I6"] = d["cpf2"]
-    ws["L5"] = d["rg"]
-    ws["L6"] = d["rg2"]
-
-    ws["C10"] = d["nome_imobiliaria"]
-    ws["C11"] = d["nome_corretor"]
-    ws["C12"] = "Monyke Procopio"
-    ws["C13"] = d["nome_gerente"]
-    ws["C14"] = d["nome_diretor"]
-
-    ws["D17"] = d["empreendimento_contrato"]
-    ws["J17"] = d["unidade"]
-    ws["J19"] = d["valor_negocio"]
-    ws["D19"] = d["data_contrato_intermediacao"]
-    ws["K23"] = d["valor_total_comissao"]
-
-    ws["E26"] = d["valor_imobiliaria"]
-    ws["E27"] = d["valor_corretor"]
-    ws["E28"] = d["valor_ato_minimo"]
-    ws["E29"] = d["valor_gerente"]
-    ws["E30"] = d["valor_total_distribuicao"]
-
-    ws["F26"] = f"{d['porcentagem_imobiliaria']:.2f}%"
-    ws["F27"] = f"{d['porcentagem_corretor']:.2f}%"
-    ws["F28"] = "0.30%"
-    ws["F29"] = f"{d['porcentagem_gerente']:.2f}%"
-    ws["F30"] = f"{d['porcentagem_total']:.2f}%"
-
-    ws["C50"] = d["nome_corretor"]
-    ws["J50"] = d["nome_gerente"]
-    ws["C54"] = d["nome_diretor"]
-
-    configurar_impressao(ws, "portrait")
-
-    arquivo = "contrato_intermediacao.xlsx"
-    wb.save(arquivo)
-    return arquivo
-
-
-# ---------------- REGRAS DA IMOBILIÁRIA ATIVA ----------------
-profile_atual = buscar_profile_por_id(st.session_state["usuario_id"]) or {}
-imob_bd = buscar_imobiliaria_ativa(st.session_state["imobiliaria_id"]) if st.session_state.get("imobiliaria_id") else {}
-
-porcentagem_total_padrao = float(imob_bd.get("porcentagem_total", 5.30)) if imob_bd else 5.30
-porcentagem_imobiliaria_padrao = float(imob_bd.get("porcentagem_imobiliaria", 2.00)) if imob_bd else 2.00
-porcentagem_corretor_padrao = float(imob_bd.get("porcentagem_corretor", 2.00)) if imob_bd else 2.00
-porcentagem_gerente_padrao = float(imob_bd.get("porcentagem_gerente", 1.00)) if imob_bd else 1.00
-
-# ---------------- EMPREENDIMENTOS ----------------
-empreendimentos = {
-    "Frei Galvão": {
-        "proprietario": "Frei Galvão empreendimentos imobiliários",
-        "nome": "Loteamento Frei Galvão",
-        "logradouro": "Avenida Fazenda Bananal",
-        "tabela": "tabela_frei_galvao.xlsx",
-        "contrato_nome": "Residencial Frei Galvão",
-    }
-}
-
-# ---------------- APP PRINCIPAL ----------------
 st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendimento</div>', unsafe_allow_html=True)
 
 emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
@@ -1096,9 +1148,14 @@ if not caminho_tabela.exists():
 mod_time = caminho_tabela.stat().st_mtime
 df = carregar_tabela(str(caminho_tabela), mod_time)
 
-col = df.columns[0]
-unidade = st.selectbox("Lote", df[col].dropna().unique(), key="lote")
-linha = df[df[col] == unidade].iloc[0]
+coluna_lote = df.columns[0]
+lotes_disponiveis = df[coluna_lote].dropna().astype(str).unique().tolist()
+
+if st.session_state["lote"] not in lotes_disponiveis:
+    st.session_state["lote"] = lotes_disponiveis[0]
+
+unidade = st.selectbox("Lote", lotes_disponiveis, key="lote")
+linha = df[df[coluna_lote].astype(str) == str(unidade)].iloc[0]
 
 valor_negocio = buscar(linha, ["valor negócio", "valor negocio"])
 entrada_imovel = buscar(linha, ["entrada imovel", "entrada imóvel"])
@@ -1113,6 +1170,9 @@ ato_min = valor_negocio * 0.003
 
 st.markdown("</div>", unsafe_allow_html=True)
 
+# =========================
+# FORMULÁRIO
+# =========================
 col_form_1, col_form_2 = st.columns(2)
 
 with col_form_1:
@@ -1130,9 +1190,6 @@ with col_form_1:
     email = st.text_input("Email", key="email")
     data_nascimento = st.date_input(
         "Data de nascimento do cliente",
-        value=date(1980, 1, 1),
-        min_value=date(1900, 1, 1),
-        max_value=date.today(),
         key="data_nascimento"
     )
     st.markdown("</div>", unsafe_allow_html=True)
@@ -1196,13 +1253,12 @@ if valor_cliente < valor_minimo_entrada:
 if valor_cliente > entrada_total:
     avisos_validacao.append("Entrada cliente maior que a entrada total. O excedente não será parcelado.")
 
-parcelas = st.slider("Parcelas", 1, 4, 1, key="parc")
+parcelas = st.slider("Parcelas", 1, 4, key="parc")
 
 usar_diferente = False
 parcela_diferente = 0.0
 parcelas_iguais = 0
 valor_parcela_igual = 0.0
-data_parcela_diferente = ""
 
 if not entrada_quitada:
     parcelas_iguais = parcelas
@@ -1222,7 +1278,6 @@ if personalizar and parcelas > 1 and not entrada_quitada:
         usar_diferente = True
         parcela_diferente = parcela_editada
         parcelas_iguais = parcelas - 1
-        data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
 
         if parcela_diferente > restante:
             erros_validacao.append("A parcela diferente não pode ser maior que o restante da entrada.")
@@ -1239,27 +1294,24 @@ with st.expander("📑 Detalhes Contrato de Intermediação", expanded=False):
         "Porcentagem Imobiliária",
         min_value=0.0,
         step=0.01,
-        value=float(porcentagem_imobiliaria_padrao),
-        format="%.2f",
-        key="pct_imobiliaria"
+        key="pct_imobiliaria",
+        format="%.2f"
     )
 
     porcentagem_corretor = st.number_input(
         "Porcentagem Corretor",
         min_value=0.0,
         step=0.01,
-        value=float(porcentagem_corretor_padrao),
-        format="%.2f",
-        key="pct_corretor"
+        key="pct_corretor",
+        format="%.2f"
     )
 
     porcentagem_gerente = st.number_input(
         "Porcentagem Gerente",
         min_value=0.0,
         step=0.01,
-        value=float(porcentagem_gerente_padrao),
-        format="%.2f",
-        key="pct_gerente"
+        key="pct_gerente",
+        format="%.2f"
     )
 
     st.caption(f"Percentual total da imobiliária ativa: {float(porcentagem_total_padrao):.2f}%")
@@ -1282,7 +1334,6 @@ with col_l1:
     st.metric("Unidade", unidade)
     st.metric("Área (m²)", f"{area:.2f}")
     st.metric("Entrada Imóvel", formatar_moeda(entrada_imovel))
-
 with col_l2:
     st.metric("Valor Negócio", formatar_moeda(valor_negocio))
     st.metric("Valor Imóvel", formatar_moeda(valor_imovel))
@@ -1295,7 +1346,6 @@ with col_c1:
     st.metric("Entrada Total", formatar_moeda(entrada_total))
     st.metric("Entrada Cliente (C33)", formatar_moeda(valor_cliente))
     st.metric("Valor mínimo", formatar_moeda(valor_minimo_entrada))
-
 with col_c2:
     st.metric("Ato informado", formatar_moeda(ato))
     st.metric("Restante para parcelar", formatar_moeda(restante))
@@ -1380,16 +1430,15 @@ if st.button("Gerar Proposta + Contrato", use_container_width=True, disabled=not
             "entrada_total": entrada_total,
             "valor_imovel": valor_imovel,
             "entrada_imovel": entrada_imovel,
-            "parcela_36": parcela_36,
-            "saldo": saldo,
             "entrada_cliente": valor_cliente,
             "entrada_quitada": entrada_quitada,
             "ato": ato,
+            "parcela_36": parcela_36,
+            "saldo": saldo,
             "parcelas_iguais": parcelas_iguais,
             "valor_parcela_igual": valor_parcela_igual,
             "usar_diferente": usar_diferente,
             "parcela_diferente": parcela_diferente,
-            "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else "",
             "data_venc_emp": data_venc_emp.strftime("%d/%m/%Y"),
             "data_parcelas": data_parcelas.strftime("%d/%m/%Y"),
             "data_saldo": data_saldo.strftime("%d/%m/%Y"),
@@ -1419,21 +1468,70 @@ if st.button("Gerar Proposta + Contrato", use_container_width=True, disabled=not
         pdf_proposta = excel_para_pdf(excel_proposta)
         pdf_contrato = excel_para_pdf(excel_contrato)
 
-        salvar_proposta_bd({
+        dados_proposta_bd = {
             "user_id": st.session_state["usuario_id"],
             "imobiliaria_id": st.session_state["imobiliaria_id"],
             "empreendimento": emp["nome"],
             "lote": unidade,
             "cliente_nome": nome,
             "cpf": cpf,
+            "rg": rg,
+            "telefone": telefone,
+            "fixo": fixo,
+            "nacionalidade": nacionalidade,
+            "profissao": profissao,
+            "fone_pref": fone_pref,
+            "estado_civil": estado_civil,
+            "renda": renda,
+            "email": email,
+            "conjuge": conjuge,
+            "cpf2": cpf2,
+            "rg2": rg2,
+            "tel2": tel2,
+            "fixo2": fixo2,
+            "nac2": nac2,
+            "prof2": prof2,
+            "fone2": fone2,
+            "civil2": civil2,
+            "renda2": renda2,
+            "unidade": unidade,
+            "area": area,
             "valor_negocio": valor_negocio,
             "entrada_total": entrada_total,
             "entrada_cliente": valor_cliente,
             "saldo": saldo,
             "parcela_36": parcela_36,
-            "area": area,
-            "status": "gerada"
-        })
+            "valor_imovel": valor_imovel,
+            "entrada_imovel": entrada_imovel,
+            "ato": ato,
+            "parcelas_iguais": parcelas_iguais,
+            "valor_parcela_igual": valor_parcela_igual,
+            "usar_diferente": usar_diferente,
+            "parcela_diferente": parcela_diferente,
+            "data_venc_emp": data_venc_emp.strftime("%d/%m/%Y"),
+            "data_parcelas": data_parcelas.strftime("%d/%m/%Y"),
+            "data_saldo": data_saldo.strftime("%d/%m/%Y"),
+            "data_ato": data_ato.strftime("%d/%m/%Y") if data_ato else "",
+            "data_parc_entrada": data_parc_entrada.strftime("%d/%m/%Y") if data_parc_entrada else "",
+            "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if data_parc_diferente else "",
+            "data_contrato_intermediacao": data_contrato_intermediacao.strftime("%d/%m/%Y") if data_contrato_intermediacao else "",
+            "porcentagem_imobiliaria": porcentagem_imobiliaria,
+            "porcentagem_corretor": porcentagem_corretor,
+            "porcentagem_gerente": porcentagem_gerente,
+            "porcentagem_total": porcentagem_total_padrao,
+            "valor_imobiliaria": valor_imobiliaria,
+            "valor_corretor": valor_corretor,
+            "valor_gerente": valor_gerente,
+            "valor_ato_minimo": valor_ato_minimo,
+            "valor_total_distribuicao": valor_total_distribuicao,
+            "valor_total_comissao": valor_total_comissao,
+            "status": "gerada",
+        }
+
+        if st.session_state.get("proposta_em_edicao_id"):
+            atualizar_proposta_bd(st.session_state["proposta_em_edicao_id"], dados_proposta_bd)
+        else:
+            salvar_proposta_bd(dados_proposta_bd)
 
         zip_excels = criar_zip_bytes([excel_proposta, excel_contrato])
         zip_pdfs = criar_zip_bytes([pdf_proposta, pdf_contrato])
