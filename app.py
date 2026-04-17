@@ -61,6 +61,22 @@ st.markdown("""
         color: #F4F7FA !important;
     }
 
+    section[data-testid="stSidebar"] .stSelectbox,
+    section[data-testid="stSidebar"] .stButton,
+    section[data-testid="stSidebar"] .stMarkdown,
+    section[data-testid="stSidebar"] .stCaption {
+        margin-bottom: 10px;
+    }
+
+    section[data-testid="stSidebar"] .stButton > button {
+        width: 100%;
+    }
+
+    section[data-testid="stSidebar"] hr {
+        margin-top: 18px;
+        margin-bottom: 18px;
+    }
+
     .gp-topbar-wrap {
         padding-top: 0.75rem;
         margin-bottom: 1.25rem;
@@ -363,6 +379,18 @@ def listar_imobiliarias():
     )
     return resp.data or []
 
+def listar_imobiliarias_aprovadas_usuario(user_id: str):
+    resp = (
+        get_supabase()
+        .table("usuarios_imobiliarias")
+        .select("id, status, cargo, imobiliaria_id, imobiliarias(*)")
+        .eq("user_id", user_id)
+        .eq("status", "aprovado")
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return resp.data or []
+
 def buscar_imobiliaria_ativa(imobiliaria_id: str):
     resp = (
         get_supabase()
@@ -635,52 +663,94 @@ st.sidebar.write(f"🔑 {st.session_state['tipo']}")
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🏢 Imobiliária")
 
-imobiliarias = listar_imobiliarias()
+minhas_relacoes = listar_minhas_imobiliarias(st.session_state["usuario_id"])
+minhas_aprovadas = listar_imobiliarias_aprovadas_usuario(st.session_state["usuario_id"])
 
-if imobiliarias:
-    nomes_imob = [i["nome"] for i in imobiliarias]
-    nome_selecionado = st.sidebar.selectbox(
-        "Selecionar imobiliária",
-        nomes_imob,
-        key="select_imobiliaria"
-    )
+if eh_admin:
+    imobiliarias_menu = listar_imobiliarias()
+    nomes_imob = [i["nome"] for i in imobiliarias_menu]
 
-    imob_ativa_sidebar = next((i for i in imobiliarias if i["nome"] == nome_selecionado), None)
-
-    if imob_ativa_sidebar:
-        relacao = buscar_relacao_usuario_imobiliaria(
-            st.session_state["usuario_id"],
-            imob_ativa_sidebar["id"]
+    if nomes_imob:
+        nome_selecionado = st.sidebar.selectbox(
+            "Selecionar imobiliária",
+            nomes_imob,
+            key="select_imobiliaria_admin"
         )
 
-        st.session_state["imobiliaria_id"] = imob_ativa_sidebar["id"]
-        st.session_state["imobiliaria_nome"] = imob_ativa_sidebar["nome"]
-        st.session_state["imobiliaria_status"] = relacao["status"] if relacao else ""
-        st.session_state["cargo_imobiliaria"] = relacao["cargo"] if relacao else ""
+        imob_ativa_sidebar = next((i for i in imobiliarias_menu if i["nome"] == nome_selecionado), None)
 
-        if relacao:
-            st.sidebar.caption(f"Status: {relacao['status']}")
-            st.sidebar.caption(f"Cargo: {relacao['cargo']}")
-        else:
-            st.sidebar.caption("Sem vínculo")
+        if imob_ativa_sidebar:
+            st.session_state["imobiliaria_id"] = imob_ativa_sidebar["id"]
+            st.session_state["imobiliaria_nome"] = imob_ativa_sidebar["nome"]
+            st.session_state["imobiliaria_status"] = "aprovado"
+            st.session_state["cargo_imobiliaria"] = "admin"
+else:
+    if minhas_aprovadas:
+        nomes_imob = [r["imobiliarias"]["nome"] for r in minhas_aprovadas if r.get("imobiliarias")]
 
-        if not relacao:
-            if st.sidebar.button("Solicitar acesso", use_container_width=True):
-                solicitar_acesso_imobiliaria(
-                    st.session_state["usuario_id"],
-                    imob_ativa_sidebar["id"]
-                )
-                st.sidebar.success("Solicitação enviada")
-                st.rerun()
+        nome_padrao = st.session_state["imobiliaria_nome"] if st.session_state.get("imobiliaria_nome") in nomes_imob else nomes_imob[0]
+
+        nome_selecionado = st.sidebar.selectbox(
+            "Selecionar imobiliária",
+            nomes_imob,
+            index=nomes_imob.index(nome_padrao),
+            key="select_imobiliaria_user"
+        )
+
+        relacao_ativa = next(
+            (r for r in minhas_aprovadas if r.get("imobiliarias") and r["imobiliarias"]["nome"] == nome_selecionado),
+            None
+        )
+
+        if relacao_ativa:
+            st.session_state["imobiliaria_id"] = relacao_ativa["imobiliaria_id"]
+            st.session_state["imobiliaria_nome"] = relacao_ativa["imobiliarias"]["nome"]
+            st.session_state["imobiliaria_status"] = relacao_ativa["status"]
+            st.session_state["cargo_imobiliaria"] = relacao_ativa["cargo"]
+
+            st.sidebar.caption(f"Status: {relacao_ativa['status']}")
+            st.sidebar.caption(f"Cargo: {relacao_ativa['cargo']}")
+    else:
+        st.sidebar.warning("Você não possui imobiliária aprovada.")
+        st.session_state["imobiliaria_id"] = ""
+        st.session_state["imobiliaria_nome"] = ""
+        st.session_state["imobiliaria_status"] = ""
+        st.session_state["cargo_imobiliaria"] = ""
 
 st.sidebar.markdown("### 📄 Minhas imobiliárias")
-minhas_relacoes = listar_minhas_imobiliarias(st.session_state["usuario_id"])
 if minhas_relacoes:
     for r in minhas_relacoes:
         nome_r = r["imobiliarias"]["nome"] if r.get("imobiliarias") else "-"
         st.sidebar.write(f"{nome_r} - {r['status']} ({r['cargo']})")
 else:
     st.sidebar.caption("Nenhuma imobiliária vinculada")
+
+if not eh_admin:
+    st.sidebar.markdown("### ➕ Solicitar nova imobiliária")
+    todas_imob = listar_imobiliarias()
+
+    ids_ja_vinculados = {r["imobiliaria_id"] for r in minhas_relacoes}
+    disponiveis = [i for i in todas_imob if i["id"] not in ids_ja_vinculados]
+
+    if disponiveis:
+        nomes_disp = [i["nome"] for i in disponiveis]
+        nova_imob_nome = st.sidebar.selectbox(
+            "Escolha uma imobiliária",
+            nomes_disp,
+            key="nova_imob_select"
+        )
+
+        nova_imob = next((i for i in disponiveis if i["nome"] == nova_imob_nome), None)
+
+        if nova_imob and st.sidebar.button("Solicitar acesso", use_container_width=True):
+            solicitar_acesso_imobiliaria(
+                st.session_state["usuario_id"],
+                nova_imob["id"]
+            )
+            st.sidebar.success("Solicitação enviada")
+            st.rerun()
+    else:
+        st.sidebar.caption("Nenhuma nova imobiliária disponível.")
 
 if st.sidebar.button("⚙️ Configurações", use_container_width=True):
     st.session_state["abrir_configuracoes"] = not st.session_state.get("abrir_configuracoes", False)
@@ -770,12 +840,21 @@ if eh_admin:
 # ---------------- BLOQUEIO DE ACESSO POR IMOBILIÁRIA ----------------
 if not eh_admin:
     if not st.session_state.get("imobiliaria_id"):
-        st.warning("Selecione uma imobiliária no menu lateral.")
+        st.warning("Selecione uma imobiliária aprovada no menu lateral.")
         st.stop()
 
     if st.session_state.get("imobiliaria_status") != "aprovado":
         st.info("Seu acesso para esta imobiliária ainda não foi aprovado.")
         st.stop()
+
+# ---------------- REGRAS DA IMOBILIÁRIA ATIVA ----------------
+profile_atual = buscar_profile_por_id(st.session_state["usuario_id"]) or {}
+imob_bd = buscar_imobiliaria_ativa(st.session_state["imobiliaria_id"]) if st.session_state.get("imobiliaria_id") else {}
+
+porcentagem_total_padrao = float(imob_bd.get("porcentagem_total", 5.30)) if imob_bd else 5.30
+porcentagem_imobiliaria_padrao = float(imob_bd.get("porcentagem_imobiliaria", 2.00)) if imob_bd else 2.00
+porcentagem_corretor_padrao = float(imob_bd.get("porcentagem_corretor", 2.00)) if imob_bd else 2.00
+porcentagem_gerente_padrao = float(imob_bd.get("porcentagem_gerente", 1.00)) if imob_bd else 1.00
 
 # ---------------- EMPREENDIMENTOS ----------------
 empreendimentos = {
@@ -924,7 +1003,6 @@ def preencher_proposta(d, modelo=MODELO_PROPOSTA):
         ws["G34"] = ""
         ws["P34"] = ""
         ws["K34"] = ""
-
         ws["B35"] = ""
         ws["C35"] = ""
         ws["G35"] = ""
@@ -1007,24 +1085,6 @@ def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
     return arquivo
 
 # ---------------- APP PRINCIPAL ----------------
-profile_atual = buscar_profile_por_id(st.session_state["usuario_id"]) or {}
-imob_bd = buscar_imobiliaria_ativa(st.session_state["imobiliaria_id"]) if st.session_state.get("imobiliaria_id") else {}
-
-porcentagem_total_padrao = float(imob_bd.get("porcentagem_total", 5.30)) if imob_bd else 5.30
-porcentagem_imobiliaria_padrao = float(imob_bd.get("porcentagem_imobiliaria", 2.00)) if imob_bd else 2.00
-porcentagem_corretor_padrao = float(imob_bd.get("porcentagem_corretor", 2.00)) if imob_bd else 2.00
-porcentagem_gerente_padrao = float(imob_bd.get("porcentagem_gerente", 1.00)) if imob_bd else 1.00
-
-empreendimentos = {
-    "Frei Galvão": {
-        "proprietario": "Frei Galvão empreendimentos imobiliários",
-        "nome": "Loteamento Frei Galvão",
-        "logradouro": "Avenida Fazenda Bananal",
-        "tabela": "tabela_frei_galvao.xlsx",
-        "contrato_nome": "Residencial Frei Galvão",
-    }
-}
-
 st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendimento</div>', unsafe_allow_html=True)
 
 emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
@@ -1172,13 +1232,17 @@ if personalizar and parcelas > 1 and not entrada_quitada:
 st.markdown("</div>", unsafe_allow_html=True)
 
 with st.expander("📑 Detalhes Contrato de Intermediação", expanded=False):
-    data_contrato_intermediacao = st.date_input("Data Contrato de Intermediação", key="data_contrato_intermediacao")
+    data_contrato_intermediacao = st.date_input(
+        "Data Contrato de Intermediação",
+        key="data_contrato_intermediacao"
+    )
 
     porcentagem_imobiliaria = st.number_input(
         "Porcentagem Imobiliária",
         min_value=0.0,
         step=0.01,
-        value=porcentagem_imobiliaria_padrao,
+        value=float(porcentagem_imobiliaria_padrao),
+        format="%.2f",
         key="pct_imobiliaria"
     )
 
@@ -1186,7 +1250,8 @@ with st.expander("📑 Detalhes Contrato de Intermediação", expanded=False):
         "Porcentagem Corretor",
         min_value=0.0,
         step=0.01,
-        value=porcentagem_corretor_padrao,
+        value=float(porcentagem_corretor_padrao),
+        format="%.2f",
         key="pct_corretor"
     )
 
@@ -1194,9 +1259,12 @@ with st.expander("📑 Detalhes Contrato de Intermediação", expanded=False):
         "Porcentagem Gerente",
         min_value=0.0,
         step=0.01,
-        value=porcentagem_gerente_padrao,
+        value=float(porcentagem_gerente_padrao),
+        format="%.2f",
         key="pct_gerente"
     )
+
+    st.caption(f"Percentual total da imobiliária ativa: {float(porcentagem_total_padrao):.2f}%")
 
 valor_imobiliaria = valor_negocio * (porcentagem_imobiliaria / 100)
 valor_corretor = valor_negocio * (porcentagem_corretor / 100)
