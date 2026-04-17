@@ -7,7 +7,6 @@ from pathlib import Path
 from datetime import date, datetime
 
 import pandas as pd
-import requests
 import streamlit as st
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
@@ -20,7 +19,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-LOGO_PATH = "Apresentação de logo moderno e profissional.png"
+LOGO_PATH = "logo_padrao.png"
 CONTRATO_INTERMEDIACAO_MODELO = "Contrato de Intermediação (3).xlsx"
 MODELO_PROPOSTA = "modelo_proposta.xlsx"
 
@@ -250,10 +249,6 @@ st.markdown("""
         font-size: 0.95rem;
     }
 
-    label, .stMarkdown, .stCaption, p, span {
-        color: inherit;
-    }
-
     @media (max-width: 900px) {
         .block-container {
             padding-top: 4.5rem !important;
@@ -295,9 +290,9 @@ def get_supabase() -> Client:
 
 # ---------------- PERFIL / LOGIN ----------------
 def buscar_profile_por_id(user_id: str):
-    supabase = get_supabase()
     resp = (
-        supabase.table("profiles")
+        get_supabase()
+        .table("profiles")
         .select("*")
         .eq("id", user_id)
         .limit(1)
@@ -306,9 +301,9 @@ def buscar_profile_por_id(user_id: str):
     return resp.data[0] if resp.data else None
 
 def buscar_profile_por_email(email: str):
-    supabase = get_supabase()
     resp = (
-        supabase.table("profiles")
+        get_supabase()
+        .table("profiles")
         .select("*")
         .eq("email", email)
         .limit(1)
@@ -331,8 +326,7 @@ def atualizar_profile_config(user_id: str, nome: str, nome_imobiliaria: str, nom
     )
 
 def login_com_supabase(email: str, senha: str):
-    supabase = get_supabase()
-    return supabase.auth.sign_in_with_password({
+    return get_supabase().auth.sign_in_with_password({
         "email": email,
         "password": senha,
     })
@@ -345,8 +339,7 @@ def cadastrar_com_supabase(
     nome_gerente: str,
     nome_diretor: str,
 ):
-    supabase = get_supabase()
-    return supabase.auth.sign_up({
+    return get_supabase().auth.sign_up({
         "email": email,
         "password": senha,
         "options": {
@@ -369,6 +362,17 @@ def listar_imobiliarias():
         .execute()
     )
     return resp.data or []
+
+def buscar_imobiliaria_ativa(imobiliaria_id: str):
+    resp = (
+        get_supabase()
+        .table("imobiliarias")
+        .select("*")
+        .eq("id", imobiliaria_id)
+        .limit(1)
+        .execute()
+    )
+    return resp.data[0] if resp.data else None
 
 def buscar_relacao_usuario_imobiliaria(user_id: str, imobiliaria_id: str):
     resp = (
@@ -412,7 +416,6 @@ def listar_minhas_imobiliarias(user_id: str):
     return resp.data or []
 
 def listar_pendentes_imobiliarias():
-    # Primeiro pega as relações pendentes
     resp = (
         get_supabase()
         .table("usuarios_imobiliarias")
@@ -423,7 +426,6 @@ def listar_pendentes_imobiliarias():
     )
     relacoes = resp.data or []
 
-    # Depois enriquece com profile do usuário
     for r in relacoes:
         r["profile_usuario"] = buscar_profile_por_id(r["user_id"])
     return relacoes
@@ -448,6 +450,15 @@ def rejeitar_usuario_imobiliaria(relacao_id: str):
             "status": "rejeitado",
         })
         .eq("id", relacao_id)
+        .execute()
+    )
+
+# ---------------- PROPOSTAS ----------------
+def salvar_proposta_bd(dados: dict):
+    return (
+        get_supabase()
+        .table("propostas")
+        .insert(dados)
         .execute()
     )
 
@@ -545,7 +556,7 @@ def tela_login():
 
                 profile = buscar_profile_por_id(user.id)
                 if not profile:
-                    st.error("Perfil não encontrado. Verifique se o trigger do Supabase foi criado.")
+                    st.error("Perfil não encontrado.")
                     return
 
                 aplicar_login(profile)
@@ -634,16 +645,16 @@ if imobiliarias:
         key="select_imobiliaria"
     )
 
-    imob_ativa = next((i for i in imobiliarias if i["nome"] == nome_selecionado), None)
+    imob_ativa_sidebar = next((i for i in imobiliarias if i["nome"] == nome_selecionado), None)
 
-    if imob_ativa:
+    if imob_ativa_sidebar:
         relacao = buscar_relacao_usuario_imobiliaria(
             st.session_state["usuario_id"],
-            imob_ativa["id"]
+            imob_ativa_sidebar["id"]
         )
 
-        st.session_state["imobiliaria_id"] = imob_ativa["id"]
-        st.session_state["imobiliaria_nome"] = imob_ativa["nome"]
+        st.session_state["imobiliaria_id"] = imob_ativa_sidebar["id"]
+        st.session_state["imobiliaria_nome"] = imob_ativa_sidebar["nome"]
         st.session_state["imobiliaria_status"] = relacao["status"] if relacao else ""
         st.session_state["cargo_imobiliaria"] = relacao["cargo"] if relacao else ""
 
@@ -657,7 +668,7 @@ if imobiliarias:
             if st.sidebar.button("Solicitar acesso", use_container_width=True):
                 solicitar_acesso_imobiliaria(
                     st.session_state["usuario_id"],
-                    imob_ativa["id"]
+                    imob_ativa_sidebar["id"]
                 )
                 st.sidebar.success("Solicitação enviada")
                 st.rerun()
@@ -714,7 +725,7 @@ if st.session_state.get("abrir_configuracoes", False):
             except Exception as e:
                 st.error(f"Erro ao salvar configurações: {e}")
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------- TELA DE APROVAÇÃO ADMIN ----------------
 if eh_admin:
@@ -983,7 +994,7 @@ def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
     ws["F27"] = f"{d['porcentagem_corretor']:.2f}%"
     ws["F28"] = "0.30%"
     ws["F29"] = f"{d['porcentagem_gerente']:.2f}%"
-    ws["F30"] = "5.30%"
+    ws["F30"] = f"{d['porcentagem_total']:.2f}%"
 
     ws["C50"] = d["nome_corretor"]
     ws["J50"] = d["nome_gerente"]
@@ -997,6 +1008,22 @@ def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
 
 # ---------------- APP PRINCIPAL ----------------
 profile_atual = buscar_profile_por_id(st.session_state["usuario_id"]) or {}
+imob_bd = buscar_imobiliaria_ativa(st.session_state["imobiliaria_id"]) if st.session_state.get("imobiliaria_id") else {}
+
+porcentagem_total_padrao = float(imob_bd.get("porcentagem_total", 5.30)) if imob_bd else 5.30
+porcentagem_imobiliaria_padrao = float(imob_bd.get("porcentagem_imobiliaria", 2.00)) if imob_bd else 2.00
+porcentagem_corretor_padrao = float(imob_bd.get("porcentagem_corretor", 2.00)) if imob_bd else 2.00
+porcentagem_gerente_padrao = float(imob_bd.get("porcentagem_gerente", 1.00)) if imob_bd else 1.00
+
+empreendimentos = {
+    "Frei Galvão": {
+        "proprietario": "Frei Galvão empreendimentos imobiliários",
+        "nome": "Loteamento Frei Galvão",
+        "logradouro": "Avenida Fazenda Bananal",
+        "tabela": "tabela_frei_galvao.xlsx",
+        "contrato_nome": "Residencial Frei Galvão",
+    }
+}
 
 st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendimento</div>', unsafe_allow_html=True)
 
@@ -1015,18 +1042,18 @@ col = df.columns[0]
 unidade = st.selectbox("Lote", df[col].dropna().unique(), key="lote")
 linha = df[df[col] == unidade].iloc[0]
 
-valor_negocio = buscar(linha, ["valor negócio"])
-entrada_imovel = buscar(linha, ["entrada imovel"])
-intermed = buscar(linha, ["intermediação"])
+valor_negocio = buscar(linha, ["valor negócio", "valor negocio"])
+entrada_imovel = buscar(linha, ["entrada imovel", "entrada imóvel"])
+intermed = buscar(linha, ["intermediação", "intermediacao"])
 parcela_36 = buscar(linha, ["36x"])
 saldo = buscar(linha, ["saldo"])
 area = buscar(linha, ["área", "area"])
-valor_imovel = buscar(linha, ["valor imóvel"])
+valor_imovel = buscar(linha, ["valor imóvel", "valor imovel"])
 
 entrada_total = intermed + entrada_imovel
 ato_min = valor_negocio * 0.003
 
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 col_form_1, col_form_2 = st.columns(2)
 
@@ -1050,7 +1077,7 @@ with col_form_1:
         max_value=date.today(),
         key="data_nascimento"
     )
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with col_form_2:
     st.markdown('<div class="gp-card"><div class="gp-section-title">👫 Cônjuge</div>', unsafe_allow_html=True)
@@ -1064,7 +1091,7 @@ with col_form_2:
     fone2 = st.text_input("Fone preferência", key="fone2")
     civil2 = st.text_input("Estado civil", key="civil2")
     renda2 = st.text_input("Renda", key="renda2")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 col_data_1, col_data_2 = st.columns(2)
 
@@ -1073,21 +1100,21 @@ with col_data_1:
     data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
     data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
     data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 with col_data_2:
     st.markdown('<div class="gp-card"><div class="gp-section-title">📅 Datas da Entrada</div>', unsafe_allow_html=True)
     data_ato = st.date_input("Data do ato", key="data_ato")
     data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
     data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="gp-card"><div class="gp-section-title">💰 Condições</div>', unsafe_allow_html=True)
 
 valor_cliente = st.number_input("Entrada cliente", min_value=0.0, key="entrada")
 personalizar = st.checkbox("⚙️ Personalizar", key="pers")
 
-ato_manual = st.number_input("Valor ato", min_value=0.0, key="ato_manual") if personalizar else 0
+ato_manual = st.number_input("Valor ato", min_value=0.0, key="ato_manual") if personalizar else 0.0
 ato = ato_manual if ato_manual > 0 else ato_min
 
 restante = entrada_total - valor_cliente
@@ -1114,14 +1141,14 @@ if valor_cliente > entrada_total:
 parcelas = st.slider("Parcelas", 1, 4, 1, key="parc")
 
 usar_diferente = False
-parcela_diferente = 0
-data_parcela_diferente = ""
+parcela_diferente = 0.0
 parcelas_iguais = 0
-valor_parcela_igual = 0
+valor_parcela_igual = 0.0
+data_parcela_diferente = ""
 
 if not entrada_quitada:
     parcelas_iguais = parcelas
-    valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
+    valor_parcela_igual = restante / parcelas if parcelas > 0 else 0.0
 
 if personalizar and parcelas > 1 and not entrada_quitada:
     parcela_editada = st.number_input("Parcela diferente", min_value=0.0, key="diff")
@@ -1142,24 +1169,45 @@ if personalizar and parcelas > 1 and not entrada_quitada:
         if parcela_diferente > restante:
             erros_validacao.append("A parcela diferente não pode ser maior que o restante da entrada.")
 
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 with st.expander("📑 Detalhes Contrato de Intermediação", expanded=False):
     data_contrato_intermediacao = st.date_input("Data Contrato de Intermediação", key="data_contrato_intermediacao")
-    porcentagem_imobiliaria = st.number_input("Porcentagem Imobiliária", min_value=0.0, step=0.01, key="pct_imobiliaria")
-    porcentagem_corretor = st.number_input("Porcentagem Corretor", min_value=0.0, step=0.01, key="pct_corretor")
-    porcentagem_gerente = st.number_input("Porcentagem Gerente", min_value=0.0, step=0.01, key="pct_gerente")
+
+    porcentagem_imobiliaria = st.number_input(
+        "Porcentagem Imobiliária",
+        min_value=0.0,
+        step=0.01,
+        value=porcentagem_imobiliaria_padrao,
+        key="pct_imobiliaria"
+    )
+
+    porcentagem_corretor = st.number_input(
+        "Porcentagem Corretor",
+        min_value=0.0,
+        step=0.01,
+        value=porcentagem_corretor_padrao,
+        key="pct_corretor"
+    )
+
+    porcentagem_gerente = st.number_input(
+        "Porcentagem Gerente",
+        min_value=0.0,
+        step=0.01,
+        value=porcentagem_gerente_padrao,
+        key="pct_gerente"
+    )
 
 valor_imobiliaria = valor_negocio * (porcentagem_imobiliaria / 100)
 valor_corretor = valor_negocio * (porcentagem_corretor / 100)
 valor_gerente = valor_negocio * (porcentagem_gerente / 100)
 valor_ato_minimo = ato_min
 valor_total_distribuicao = valor_imobiliaria + valor_corretor + valor_ato_minimo + valor_gerente
-valor_total_comissao = valor_negocio * 0.053
+valor_total_comissao = valor_negocio * (porcentagem_total_padrao / 100)
 
 if abs(valor_total_distribuicao - valor_total_comissao) > 0.01:
     erros_validacao.append(
-        "Contrato de intermediação inválido: a soma de E26, E27, E28 e E29 deve ser exatamente 5,30% do valor total do negócio."
+        f"Contrato de intermediação inválido: a soma deve ser exatamente {porcentagem_total_padrao:.2f}% do valor total do negócio."
     )
 
 st.markdown('<div class="gp-card"><div class="gp-section-title">🏡 Detalhes do Lote</div>', unsafe_allow_html=True)
@@ -1173,7 +1221,7 @@ with col_l2:
     st.metric("Valor Negócio", formatar_moeda(valor_negocio))
     st.metric("Valor Imóvel", formatar_moeda(valor_imovel))
     st.metric("Intermediação", formatar_moeda(intermed))
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="gp-card"><div class="gp-section-title">📊 Painel de Cálculo</div>', unsafe_allow_html=True)
 col_c1, col_c2 = st.columns(2)
@@ -1186,8 +1234,9 @@ with col_c2:
     st.metric("Ato informado", formatar_moeda(ato))
     st.metric("Restante para parcelar", formatar_moeda(restante))
     st.metric("Quantidade de parcelas", f"{parcelas}")
+st.markdown("</div>", unsafe_allow_html=True)
 
-st.markdown("### 📅 Parcelamento da entrada")
+st.markdown('<div class="gp-card"><div class="gp-section-title">📅 Parcelamento da entrada</div>', unsafe_allow_html=True)
 if entrada_quitada:
     st.success("Entrada paga à vista")
 elif parcelas > 1:
@@ -1200,12 +1249,12 @@ elif parcelas > 1:
         st.success(f"{parcelas}x de {formatar_moeda(valor_parcela_igual)}")
 else:
     st.success("Pagamento em parcela única")
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown('<div class="gp-card"><div class="gp-section-title">📑 Painel Contrato de Intermediação</div>', unsafe_allow_html=True)
 col_i1, col_i2, col_i3 = st.columns(3)
 with col_i1:
-    st.metric("5,30% do negócio", formatar_moeda(valor_total_comissao))
+    st.metric(f"{porcentagem_total_padrao:.2f}% do negócio", formatar_moeda(valor_total_comissao))
     st.metric("Imobiliária", formatar_moeda(valor_imobiliaria))
 with col_i2:
     st.metric("Corretor", formatar_moeda(valor_corretor))
@@ -1213,7 +1262,7 @@ with col_i2:
 with col_i3:
     st.metric("Gerente", formatar_moeda(valor_gerente))
     st.metric("Total distribuição", formatar_moeda(valor_total_distribuicao))
-st.markdown('</div>', unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
 
 if avisos_validacao:
     for aviso in avisos_validacao:
@@ -1226,103 +1275,124 @@ if erros_validacao:
 proposta_pode_ser_gerada = len(erros_validacao) == 0
 
 if st.button("Gerar Proposta + Contrato", use_container_width=True, disabled=not proposta_pode_ser_gerada):
-    data_final_36_parcelas = adicionar_meses(data_parcelas, 36)
-    idade_apos_36 = calcular_idade_em_data(data_nascimento, data_final_36_parcelas)
+    try:
+        data_final_36_parcelas = adicionar_meses(data_parcelas, 36)
+        idade_apos_36 = calcular_idade_em_data(data_nascimento, data_final_36_parcelas)
 
-    if idade_apos_36 >= 75:
-        st.warning("Cliente não conseguirá refinanciar após as 36 parcelas (idade superior a 75 anos)")
+        if idade_apos_36 >= 75:
+            st.warning("Cliente não conseguirá refinanciar após as 36 parcelas (idade superior a 75 anos)")
 
-    dados = {
-        "nome": nome,
-        "cpf": cpf,
-        "rg": rg,
-        "telefone": telefone,
-        "fixo": fixo,
-        "nacionalidade": nacionalidade,
-        "profissao": profissao,
-        "fone_pref": fone_pref,
-        "estado_civil": estado_civil,
-        "renda": renda,
-        "email": email,
-        "conjuge": conjuge,
-        "cpf2": cpf2,
-        "rg2": rg2,
-        "tel2": tel2,
-        "fixo2": fixo2,
-        "nac2": nac2,
-        "prof2": prof2,
-        "fone2": fone2,
-        "civil2": civil2,
-        "renda2": renda2,
-        "proprietario": emp["proprietario"],
-        "empreendimento": emp["nome"],
-        "empreendimento_contrato": emp.get("contrato_nome", emp["nome"]),
-        "logradouro": emp["logradouro"],
-        "unidade": unidade,
-        "area": area,
-        "valor_negocio": valor_negocio,
-        "entrada_total": entrada_total,
-        "valor_imovel": valor_imovel,
-        "entrada_imovel": entrada_imovel,
-        "parcela_36": parcela_36,
-        "saldo": saldo,
-        "entrada_cliente": valor_cliente,
-        "entrada_quitada": entrada_quitada,
-        "ato": ato,
-        "parcelas_iguais": parcelas_iguais,
-        "valor_parcela_igual": valor_parcela_igual,
-        "usar_diferente": usar_diferente,
-        "parcela_diferente": parcela_diferente,
-        "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else "",
-        "data_venc_emp": data_venc_emp.strftime("%d/%m/%Y"),
-        "data_parcelas": data_parcelas.strftime("%d/%m/%Y"),
-        "data_saldo": data_saldo.strftime("%d/%m/%Y"),
-        "data_ato": data_ato.strftime("%d/%m/%Y") if data_ato else "",
-        "data_parc_entrada": data_parc_entrada.strftime("%d/%m/%Y") if data_parc_entrada else "",
-        "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if data_parc_diferente else "",
-        "data_contrato_intermediacao": data_contrato_intermediacao.strftime("%d/%m/%Y") if data_contrato_intermediacao else "",
-        "nome_imobiliaria": st.session_state.get("imobiliaria_nome") or profile_atual.get("nome_imobiliaria", ""),
-        "nome_corretor": profile_atual.get("nome", st.session_state["usuario_nome"]),
-        "nome_gerente": profile_atual.get("nome_gerente", ""),
-        "nome_diretor": profile_atual.get("nome_diretor", ""),
-        "porcentagem_imobiliaria": porcentagem_imobiliaria,
-        "porcentagem_corretor": porcentagem_corretor,
-        "porcentagem_gerente": porcentagem_gerente,
-        "valor_imobiliaria": valor_imobiliaria,
-        "valor_corretor": valor_corretor,
-        "valor_gerente": valor_gerente,
-        "valor_ato_minimo": valor_ato_minimo,
-        "valor_total_distribuicao": valor_total_distribuicao,
-        "valor_total_comissao": valor_total_comissao,
-    }
+        dados = {
+            "nome": nome,
+            "cpf": cpf,
+            "rg": rg,
+            "telefone": telefone,
+            "fixo": fixo,
+            "nacionalidade": nacionalidade,
+            "profissao": profissao,
+            "fone_pref": fone_pref,
+            "estado_civil": estado_civil,
+            "renda": renda,
+            "email": email,
+            "conjuge": conjuge,
+            "cpf2": cpf2,
+            "rg2": rg2,
+            "tel2": tel2,
+            "fixo2": fixo2,
+            "nac2": nac2,
+            "prof2": prof2,
+            "fone2": fone2,
+            "civil2": civil2,
+            "renda2": renda2,
+            "proprietario": emp["proprietario"],
+            "empreendimento": emp["nome"],
+            "empreendimento_contrato": emp.get("contrato_nome", emp["nome"]),
+            "logradouro": emp["logradouro"],
+            "unidade": unidade,
+            "area": area,
+            "valor_negocio": valor_negocio,
+            "entrada_total": entrada_total,
+            "valor_imovel": valor_imovel,
+            "entrada_imovel": entrada_imovel,
+            "parcela_36": parcela_36,
+            "saldo": saldo,
+            "entrada_cliente": valor_cliente,
+            "entrada_quitada": entrada_quitada,
+            "ato": ato,
+            "parcelas_iguais": parcelas_iguais,
+            "valor_parcela_igual": valor_parcela_igual,
+            "usar_diferente": usar_diferente,
+            "parcela_diferente": parcela_diferente,
+            "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else "",
+            "data_venc_emp": data_venc_emp.strftime("%d/%m/%Y"),
+            "data_parcelas": data_parcelas.strftime("%d/%m/%Y"),
+            "data_saldo": data_saldo.strftime("%d/%m/%Y"),
+            "data_ato": data_ato.strftime("%d/%m/%Y") if data_ato else "",
+            "data_parc_entrada": data_parc_entrada.strftime("%d/%m/%Y") if data_parc_entrada else "",
+            "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if data_parc_diferente else "",
+            "data_contrato_intermediacao": data_contrato_intermediacao.strftime("%d/%m/%Y") if data_contrato_intermediacao else "",
+            "nome_imobiliaria": st.session_state.get("imobiliaria_nome") or profile_atual.get("nome_imobiliaria", ""),
+            "nome_corretor": profile_atual.get("nome", st.session_state["usuario_nome"]),
+            "nome_gerente": profile_atual.get("nome_gerente", ""),
+            "nome_diretor": profile_atual.get("nome_diretor", ""),
+            "porcentagem_imobiliaria": porcentagem_imobiliaria,
+            "porcentagem_corretor": porcentagem_corretor,
+            "porcentagem_gerente": porcentagem_gerente,
+            "porcentagem_total": porcentagem_total_padrao,
+            "valor_imobiliaria": valor_imobiliaria,
+            "valor_corretor": valor_corretor,
+            "valor_gerente": valor_gerente,
+            "valor_ato_minimo": valor_ato_minimo,
+            "valor_total_distribuicao": valor_total_distribuicao,
+            "valor_total_comissao": valor_total_comissao,
+        }
 
-    excel_proposta = preencher_proposta(dados)
-    excel_contrato = preencher_contrato_intermediacao(dados)
+        excel_proposta = preencher_proposta(dados)
+        excel_contrato = preencher_contrato_intermediacao(dados)
 
-    pdf_proposta = excel_para_pdf(excel_proposta)
-    pdf_contrato = excel_para_pdf(excel_contrato)
+        pdf_proposta = excel_para_pdf(excel_proposta)
+        pdf_contrato = excel_para_pdf(excel_contrato)
 
-    zip_excels = criar_zip_bytes([excel_proposta, excel_contrato])
-    zip_pdfs = criar_zip_bytes([pdf_proposta, pdf_contrato])
+        salvar_proposta_bd({
+            "user_id": st.session_state["usuario_id"],
+            "imobiliaria_id": st.session_state["imobiliaria_id"],
+            "empreendimento": emp["nome"],
+            "lote": unidade,
+            "cliente_nome": nome,
+            "cpf": cpf,
+            "valor_negocio": valor_negocio,
+            "entrada_total": entrada_total,
+            "entrada_cliente": valor_cliente,
+            "saldo": saldo,
+            "parcela_36": parcela_36,
+            "area": area,
+            "status": "gerada"
+        })
 
-    st.success("✅ Proposta e contrato gerados com sucesso!")
+        zip_excels = criar_zip_bytes([excel_proposta, excel_contrato])
+        zip_pdfs = criar_zip_bytes([pdf_proposta, pdf_contrato])
 
-    col_down_1, col_down_2 = st.columns(2)
+        st.success("✅ Proposta e contrato gerados com sucesso!")
 
-    with col_down_1:
-        st.download_button(
-            "📥 Baixar 2 arquivos em Excel",
-            data=zip_excels,
-            file_name=f"Excels_{unidade}.zip",
-            mime="application/zip",
-            use_container_width=True,
-        )
+        col_down_1, col_down_2 = st.columns(2)
 
-    with col_down_2:
-        st.download_button(
-            "📥 Baixar 2 arquivos em PDF",
-            data=zip_pdfs,
-            file_name=f"PDFs_{unidade}.zip",
-            mime="application/zip",
-            use_container_width=True,
-        )
+        with col_down_1:
+            st.download_button(
+                "📥 Baixar 2 arquivos em Excel",
+                data=zip_excels,
+                file_name=f"Excels_{unidade}.zip",
+                mime="application/zip",
+                use_container_width=True,
+            )
+
+        with col_down_2:
+            st.download_button(
+                "📥 Baixar 2 arquivos em PDF",
+                data=zip_pdfs,
+                file_name=f"PDFs_{unidade}.zip",
+                mime="application/zip",
+                use_container_width=True,
+            )
+
+    except Exception as e:
+        st.error(f"Erro ao gerar proposta e contrato: {e}")
