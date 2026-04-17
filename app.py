@@ -831,6 +831,243 @@ def tela_login():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+
+
+# =========================
+# UTILITÁRIOS
+# =========================
+@st.cache_data
+def carregar_tabela(arquivo, mod_time):
+    df = pd.read_excel(arquivo, skiprows=11)
+    df.columns = df.columns.str.strip().str.lower()
+    return df
+
+
+def limpar(valor):
+    if pd.isna(valor):
+        return 0.0
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    texto = str(valor).replace("R$", "").replace(".", "").replace(",", ".")
+    try:
+        return float(texto)
+    except Exception:
+        return 0.0
+
+
+def buscar(linha, nomes):
+    for col in linha.index:
+        for nome in nomes:
+            if nome.lower() in col.lower():
+                return limpar(linha[col])
+    return 0.0
+
+
+def excel_para_pdf(arquivo):
+    subprocess.run(
+        ["libreoffice", "--headless", "--convert-to", "pdf", arquivo],
+        check=False,
+    )
+    return arquivo.replace(".xlsx", ".pdf")
+
+
+def calcular_idade_em_data(nascimento: date, data_referencia: date) -> int:
+    return data_referencia.year - nascimento.year - (
+        (data_referencia.month, data_referencia.day) < (nascimento.month, nascimento.day)
+    )
+
+
+def adicionar_meses(data_base: date, meses: int) -> date:
+    ano = data_base.year + (data_base.month - 1 + meses) // 12
+    mes = (data_base.month - 1 + meses) % 12 + 1
+    ultimo_dia = [
+        31,
+        29 if (ano % 4 == 0 and (ano % 100 != 0 or ano % 400 == 0)) else 28,
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+    ][mes - 1]
+    dia = min(data_base.day, ultimo_dia)
+    return date(ano, mes, dia)
+
+
+def formatar_moeda(valor: float) -> str:
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def criar_zip_bytes(arquivos: list[str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for arquivo in arquivos:
+            if os.path.exists(arquivo):
+                zf.write(arquivo, arcname=os.path.basename(arquivo))
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def configurar_impressao(ws, orientation="portrait"):
+    ws.page_setup.orientation = orientation
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.horizontalCentered = True
+    ws.print_options.verticalCentered = False
+
+
+# =========================
+# EXCEL PROPOSTA
+# =========================
+def preencher_proposta(d, modelo=MODELO_PROPOSTA):
+    wb = load_workbook(modelo)
+    ws = wb.active
+
+    ws["E5"] = d["nome"]
+    ws["D6"] = d["cpf"]
+    ws["J6"] = d["telefone"]
+    ws["O6"] = d["fixo"]
+    ws["D7"] = d["nacionalidade"]
+    ws["J7"] = d["profissao"]
+    ws["P7"] = d["fone_pref"]
+    ws["D8"] = d["estado_civil"]
+    ws["O8"] = d["renda"]
+    ws["E9"] = d["email"]
+
+    ws["G11"] = d["conjuge"]
+    ws["D13"] = d["cpf2"]
+    ws["J13"] = d["tel2"]
+    ws["O13"] = d["fixo2"]
+    ws["D14"] = d["nac2"]
+    ws["J14"] = d["prof2"]
+    ws["P14"] = d["fone2"]
+    ws["D15"] = d["civil2"]
+    ws["O15"] = d["renda2"]
+
+    ws["G18"] = d["proprietario"]
+    ws["G19"] = d["empreendimento"]
+    ws["C20"] = d["logradouro"]
+    ws["I20"] = d["unidade"]
+    ws["Q20"] = d["area"]
+
+    ws["C21"] = d["valor_negocio"]
+    ws["J21"] = d["entrada_total"]
+    ws["O21"] = d["valor_imovel"]
+
+    ws["B24"] = 1
+    ws["C24"] = d["entrada_imovel"]
+    ws["G24"] = "Única"
+    ws["K24"] = d["data_venc_emp"]
+
+    ws["B25"] = "36x"
+    ws["C25"] = d["parcela_36"]
+    ws["G25"] = "Mensal"
+    ws["K25"] = d["data_parcelas"]
+
+    ws["B26"] = 1
+    ws["C26"] = d["saldo"]
+    ws["G26"] = "Única"
+    ws["K26"] = d["data_saldo"]
+
+    ws["P24"] = "Fixo"
+    ws["P25"] = "Reajustável"
+    ws["P26"] = "Reajustável"
+
+    ws["B33"] = 1
+    ws["C33"] = d["entrada_cliente"]
+    ws["G33"] = "Única"
+    ws["P33"] = "À vista"
+    ws["K33"] = d["data_ato"]
+    ws["K33"].alignment = Alignment(horizontal="center", vertical="center")
+
+    if d["entrada_quitada"]:
+        ws["B34"] = ""
+        ws["C34"] = ""
+        ws["G34"] = ""
+        ws["P34"] = ""
+        ws["K34"] = ""
+
+        ws["B35"] = ""
+        ws["C35"] = ""
+        ws["G35"] = ""
+        ws["P35"] = ""
+        ws["K35"] = ""
+    else:
+        ws["B34"] = d["parcelas_iguais"]
+        ws["C34"] = d["valor_parcela_igual"]
+        ws["G34"] = "Mensal" if d["parcelas_iguais"] > 0 else ""
+        ws["P34"] = "Fixo"
+        ws["K34"] = d["data_parc_entrada"]
+        ws["K34"].alignment = Alignment(horizontal="center", vertical="center")
+
+        if d["usar_diferente"]:
+            ws["B35"] = 1
+            ws["C35"] = d["parcela_diferente"]
+            ws["G35"] = "Única"
+            ws["P35"] = "Fixa"
+            ws["K35"] = d["data_parcela_diferente_manual"]
+
+            for cel in ["B35", "G35", "K35", "P35"]:
+                ws[cel].alignment = Alignment(horizontal="center", vertical="center")
+        else:
+            ws["B35"] = ""
+            ws["C35"] = ""
+            ws["G35"] = ""
+            ws["P35"] = ""
+            ws["K35"] = ""
+
+    configurar_impressao(ws, "portrait")
+
+    arquivo = "proposta.xlsx"
+    wb.save(arquivo)
+    return arquivo
+
+
+# =========================
+# EXCEL CONTRATO
+# =========================
+def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
+    wb = load_workbook(modelo)
+    ws = wb.active
+
+    ws["C5"] = d["nome"]
+    ws["C6"] = d["conjuge"]
+    ws["I5"] = d["cpf"]
+    ws["I6"] = d["cpf2"]
+    ws["L5"] = d["rg"]
+    ws["L6"] = d["rg2"]
+
+    ws["C10"] = d["nome_imobiliaria"]
+    ws["C11"] = d["nome_corretor"]
+    ws["C12"] = "Monyke Procopio"
+    ws["C13"] = d["nome_gerente"]
+    ws["C14"] = d["nome_diretor"]
+
+    ws["D17"] = d["empreendimento_contrato"]
+    ws["J17"] = d["unidade"]
+    ws["J19"] = d["valor_negocio"]
+    ws["D19"] = d["data_contrato_intermediacao"]
+    ws["K23"] = d["valor_total_comissao"]
+
+    ws["E26"] = d["valor_imobiliaria"]
+    ws["E27"] = d["valor_corretor"]
+    ws["E28"] = d["valor_ato_minimo"]
+    ws["E29"] = d["valor_gerente"]
+    ws["E30"] = d["valor_total_distribuicao"]
+
+    ws["F26"] = f"{d['porcentagem_imobiliaria']:.2f}%"
+    ws["F27"] = f"{d['porcentagem_corretor']:.2f}%"
+    ws["F28"] = "0.30%"
+    ws["F29"] = f"{d['porcentagem_gerente']:.2f}%"
+    ws["F30"] = f"{d['porcentagem_total']:.2f}%"
+
+    ws["C50"] = d["nome_corretor"]
+    ws["J50"] = d["nome_gerente"]
+    ws["C54"] = d["nome_diretor"]
+
+    configurar_impressao(ws, "portrait")
+
+    arquivo = "contrato_intermediacao.xlsx"
+    wb.save(arquivo)
+    return arquivo
+
+
 # =========================
 # INÍCIO
 # =========================
