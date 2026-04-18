@@ -1620,36 +1620,36 @@ def render_admin_assinaturas_page():
     else:
         for i, u in enumerate(filtrados):
             with st.expander(f"{u['nome']} | {u['status']} | Ativo: {u['ativo']}"):
-            st.write(f"**Email:** {u['email']}")
-            st.write(f"**Tipo:** {u['tipo']}")
+                st.write(f"**Email:** {u['email']}")
+                st.write(f"**Tipo:** {u['tipo']}")
 
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                if st.button("Aprovar 30 dias", key=f"aprovar_30_{i}", use_container_width=True):
-                    try:
-                        liberar_assinatura_30_dias(u["user_id"])
-                        st.success("Assinatura aprovada por 30 dias.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao aprovar: {e}")
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    if st.button("Aprovar 30 dias", key=f"aprovar_30_{i}", use_container_width=True):
+                        try:
+                            liberar_assinatura_30_dias(u["user_id"])
+                            st.success("Assinatura aprovada por 30 dias.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao aprovar: {e}")
 
-            with c2:
-                if st.button("Reaprovar +30 dias", key=f"reaprovar_30_{i}", use_container_width=True):
-                    try:
-                        renovar_assinatura_30_dias(u["user_id"])
-                        st.success("Assinatura renovada por mais 30 dias.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao renovar: {e}")
+                with c2:
+                    if st.button("Reaprovar +30 dias", key=f"reaprovar_30_{i}", use_container_width=True):
+                        try:
+                            renovar_assinatura_30_dias(u["user_id"])
+                            st.success("Assinatura renovada por mais 30 dias.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao renovar: {e}")
 
-            with c3:
-                if st.button("Bloquear", key=f"bloquear_ass_{i}", use_container_width=True):
-                    try:
-                        bloquear_assinatura(u["user_id"])
-                        st.warning("Usuário bloqueado.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao bloquear: {e}")
+                with c3:
+                    if st.button("Bloquear", key=f"bloquear_ass_{i}", use_container_width=True):
+                        try:
+                            bloquear_assinatura(u["user_id"])
+                            st.warning("Usuário bloqueado.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao bloquear: {e}")
 
     st.markdown("</div>", unsafe_allow_html=True)
 
