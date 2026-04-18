@@ -60,7 +60,7 @@ st.markdown("""
         --gp-bg-3: #0A4C5B;
         --gp-sidebar-1: #06232C;
         --gp-sidebar-2: #083845;
-        --gp-surface: rgba(255,255,255,0.08);
+        --gp-surface: rgba(255,255,255,0.06);
         --gp-surface-strong: #F8FBFD;
         --gp-surface-dark: linear-gradient(135deg, #0A3D4B 0%, #0C6D84 100%);
         --gp-border: rgba(255,255,255,0.08);
@@ -77,55 +77,9 @@ st.markdown("""
         --gp-header-bg: rgba(0, 0, 0, 0.85);
     }
 
-    [data-theme="light"] {
-        --gp-bg-1: #F4F8FB;
-        --gp-bg-2: #EAF3F8;
-        --gp-bg-3: #DCECF5;
-        --gp-sidebar-1: #EEF5F9;
-        --gp-sidebar-2: #E2EEF5;
-        --gp-surface: rgba(255,255,255,0.78);
-        --gp-surface-strong: #FFFFFF;
-        --gp-surface-dark: linear-gradient(135deg, #F7FAFC 0%, #EAF3F8 100%);
-        --gp-border: rgba(6,43,54,0.10);
-        --gp-border-soft: rgba(6,43,54,0.16);
-        --gp-text: #062B36;
-        --gp-text-soft: rgba(6,43,54,0.78);
-        --gp-text-dark: #062B36;
-        --gp-muted: #55656F;
-        --gp-accent: #F97316;
-        --gp-accent-2: #FF8E2B;
-        --gp-metric-bg: #FFFFFF;
-        --gp-metric-label: #0C6D84;
-        --gp-input-bg: #FFFFFF;
-        --gp-header-bg: rgba(255, 255, 255, 0.90);
-    }
-
-    [data-theme="dark"] {
-        --gp-bg-1: #062B36;
-        --gp-bg-2: #073846;
-        --gp-bg-3: #0A4C5B;
-        --gp-sidebar-1: #06232C;
-        --gp-sidebar-2: #083845;
-        --gp-surface: rgba(255,255,255,0.08);
-        --gp-surface-strong: #F8FBFD;
-        --gp-surface-dark: linear-gradient(135deg, #0A3D4B 0%, #0C6D84 100%);
-        --gp-border: rgba(255,255,255,0.08);
-        --gp-border-soft: rgba(12,109,132,0.18);
-        --gp-text: #F4F7FA;
-        --gp-text-soft: rgba(244,247,250,0.82);
-        --gp-text-dark: #062B36;
-        --gp-muted: #6B7C85;
-        --gp-accent: #F97316;
-        --gp-accent-2: #FF8E2B;
-        --gp-metric-bg: #FFFFFF;
-        --gp-metric-label: #0C6D84;
-        --gp-input-bg: #FFFFFF;
-        --gp-header-bg: rgba(0, 0, 0, 0.85);
-    }
-
-    .stApp {
-        background: linear-gradient(180deg, var(--gp-bg-1) 0%, var(--gp-bg-2) 55%, var(--gp-bg-3) 100%);
-        color: var(--gp-text);
+    html, body, [data-testid="stAppViewContainer"], .stApp {
+        background: linear-gradient(180deg, var(--gp-bg-1) 0%, var(--gp-bg-2) 55%, var(--gp-bg-3) 100%) !important;
+        color: var(--gp-text) !important;
     }
 
     .block-container {
@@ -135,7 +89,7 @@ st.markdown("""
     }
 
     header[data-testid="stHeader"] {
-        background: var(--gp-header-bg);
+        background: var(--gp-header-bg) !important;
     }
 
     [data-testid="stToolbar"] {
@@ -143,8 +97,8 @@ st.markdown("""
     }
 
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, var(--gp-sidebar-1) 0%, var(--gp-sidebar-2) 100%);
-        border-right: 1px solid var(--gp-border);
+        background: linear-gradient(180deg, var(--gp-sidebar-1) 0%, var(--gp-sidebar-2) 100%) !important;
+        border-right: 1px solid var(--gp-border) !important;
     }
 
     [data-testid="stSidebar"] * {
@@ -184,7 +138,7 @@ st.markdown("""
         background: var(--gp-surface);
         border: 1px solid var(--gp-border);
         backdrop-filter: blur(12px);
-        box-shadow: 0 12px 32px rgba(0,0,0,0.12);
+        box-shadow: 0 12px 32px rgba(0,0,0,0.18);
         overflow: visible;
         min-height: 116px;
     }
@@ -200,7 +154,7 @@ st.markdown("""
     }
 
     .gp-title {
-        color: var(--gp-text);
+        color: var(--gp-text) !important;
         font-size: 2rem;
         font-weight: 800;
         margin: 0;
@@ -208,16 +162,16 @@ st.markdown("""
     }
 
     .gp-subtitle {
-        color: var(--gp-text-soft);
+        color: var(--gp-text-soft) !important;
         font-size: 0.98rem;
         margin-top: 4px;
     }
 
     .gp-card {
-        background: var(--gp-surface-strong);
+        background: var(--gp-surface-strong) !important;
         border-radius: 24px;
         padding: 22px 24px;
-        box-shadow: 0 12px 28px rgba(0,0,0,0.10);
+        box-shadow: 0 12px 28px rgba(0,0,0,0.16);
         border: 1px solid rgba(12,109,132,0.10);
         margin-bottom: 18px;
     }
@@ -228,11 +182,11 @@ st.markdown("""
     }
 
     .gp-card-dark {
-        background: var(--gp-surface-dark);
-        color: var(--gp-text);
+        background: var(--gp-surface-dark) !important;
+        color: var(--gp-text) !important;
         border-radius: 24px;
         padding: 22px 24px;
-        box-shadow: 0 12px 28px rgba(0,0,0,0.14);
+        box-shadow: 0 12px 28px rgba(0,0,0,0.22);
         margin-bottom: 18px;
         border: 1px solid var(--gp-border);
     }
@@ -243,7 +197,7 @@ st.markdown("""
     }
 
     .gp-section-title {
-        color: var(--gp-text-dark);
+        color: var(--gp-text-dark) !important;
         font-size: 1.15rem;
         font-weight: 800;
         margin-bottom: 14px;
@@ -254,11 +208,11 @@ st.markdown("""
     }
 
     div[data-testid="stMetric"] {
-        background: var(--gp-metric-bg);
+        background: var(--gp-metric-bg) !important;
         border-radius: 18px;
         padding: 14px 16px;
         border: 1px solid rgba(12,109,132,0.10);
-        box-shadow: 0 8px 18px rgba(0,0,0,0.06);
+        box-shadow: 0 8px 18px rgba(0,0,0,0.08);
     }
 
     div[data-testid="stMetric"] * {
@@ -284,6 +238,29 @@ st.markdown("""
         font-weight: 800 !important;
         min-height: 46px !important;
         box-shadow: 0 10px 18px rgba(249,115,22,0.28) !important;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        color: var(--gp-text) !important;
+    }
+
+    .stTabs [aria-selected="true"] {
+        color: white !important;
+    }
+
+    .stMarkdown, .stCaption, p, span, label, h1, h2, h3, h4, h5, h6, small {
+        color: inherit;
+    }
+
+    .stTextInput > label,
+    .stNumberInput > label,
+    .stDateInput > label,
+    .stSelectbox > label,
+    .stTextArea > label,
+    .stRadio > label,
+    .stCheckbox > label {
+        color: var(--gp-text) !important;
+        font-weight: 600 !important;
     }
 
     .stTextInput > div > div > input,
@@ -320,8 +297,8 @@ st.markdown("""
         fill: var(--gp-text-dark) !important;
     }
 
-    .stTabs [data-baseweb="tab"] {
-        color: var(--gp-text) !important;
+    [data-testid="stNotification"] * {
+        color: var(--gp-text-dark) !important;
     }
 </style>
 """, unsafe_allow_html=True)
