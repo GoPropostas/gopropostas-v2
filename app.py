@@ -7,10 +7,12 @@ from pathlib import Path
 from datetime import date, datetime
 
 import pandas as pd
+import requests
 import streamlit as st
 from openpyxl import load_workbook
 from openpyxl.styles import Alignment
 from supabase import Client, create_client
+from PIL import Image, UnidentifiedImageError
 
 st.set_page_config(
     page_title="GoPropostas",
@@ -19,7 +21,9 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-LOGO_PATH = "logo_padrao.png"
+EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = st.secrets["EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL"].strip()
+EDGE_FUNCTION_CREATE_PIX_URL = st.secrets["EDGE_FUNCTION_CREATE_PIX_URL"].strip()
+LOGO_CANDIDATES = ["logo.png", "logo_padrao.png", "Apresentação de logo moderno e profissional.png"]
 CONTRATO_INTERMEDIACAO_MODELO = "Contrato de Intermediação (3).xlsx"
 MODELO_PROPOSTA = "modelo_proposta.xlsx"
 
@@ -27,14 +31,25 @@ MODELO_PROPOSTA = "modelo_proposta.xlsx"
 # =========================
 # VISUAL
 # =========================
-def img_to_base64(path: str) -> str:
-    if not Path(path).exists():
+def encontrar_logo() -> str:
+    for nome in LOGO_CANDIDATES:
+        if Path(nome).exists():
+            return nome
+    return ""
+
+def img_to_base64_segura(path: str) -> str:
+    if not path or not Path(path).exists():
         return ""
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode()
+    try:
+        with Image.open(path) as img:
+            img.verify()
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except (UnidentifiedImageError, OSError, Exception):
+        return ""
 
-
-logo_base64 = img_to_base64(LOGO_PATH)
+LOGO_PATH = encontrar_logo()
+logo_base64 = img_to_base64_segura(LOGO_PATH)
 
 st.markdown("""
 <style>
@@ -284,6 +299,80 @@ def buscar_profile_por_email(email: str):
         .execute()
     )
     return resp.data[0] if resp.data else None
+
+
+def buscar_assinatura(user_id: str):
+    try:
+        resp = (
+            get_supabase()
+            .table("assinaturas")
+            .select("*")
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        return resp.data[0] if resp.data else None
+    except Exception:
+        return None
+
+
+def assinatura_ativa_para_acesso(assinatura: dict) -> bool:
+    if not assinatura:
+        return False
+    if not assinatura.get("assinatura_ativa"):
+        return False
+
+    proximo = assinatura.get("proximo_cobranca_em") or assinatura.get("data_fim")
+    if not proximo:
+        return bool(assinatura.get("assinatura_ativa"))
+
+    try:
+        proximo_dt = datetime.fromisoformat(str(proximo).replace("Z", "+00:00"))
+        agora = datetime.now(proximo_dt.tzinfo) if proximo_dt.tzinfo else datetime.now()
+        return proximo_dt >= agora
+    except Exception:
+        return bool(assinatura.get("assinatura_ativa"))
+
+
+def criar_assinatura_mp(user_id: str, email: str):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {st.secrets['SUPABASE_KEY'].strip()}"
+    }
+    payload = {"user_id": user_id, "email": email}
+
+    resp = requests.post(
+        EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL,
+        json=payload,
+        headers=headers,
+        timeout=30,
+    )
+
+    try:
+        return resp.json()
+    except Exception:
+        return {"error": f"Resposta inválida da função: status {resp.status_code}", "raw_text": resp.text}
+
+
+def criar_pix(user_id: str, email: str):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {st.secrets['SUPABASE_KEY'].strip()}"
+    }
+    payload = {"user_id": user_id, "email": email}
+
+    resp = requests.post(
+        EDGE_FUNCTION_CREATE_PIX_URL,
+        json=payload,
+        headers=headers,
+        timeout=30,
+    )
+
+    try:
+        return resp.json()
+    except Exception:
+        return {"error": f"Resposta inválida da função PIX: status {resp.status_code}", "raw_text": resp.text}
 
 
 def atualizar_profile_config(user_id: str, nome: str, nome_imobiliaria: str, nome_gerente: str, nome_diretor: str):
@@ -831,6 +920,225 @@ def tela_login():
     st.markdown("</div>", unsafe_allow_html=True)
 
 
+# ---------------- UTILITÁRIOS ----------------
+@st.cache_data
+def carregar_tabela(arquivo, mod_time):
+    df = pd.read_excel(arquivo, skiprows=11)
+    df.columns = df.columns.str.strip().str.lower()
+    return df
+
+def limpar(valor):
+    if pd.isna(valor):
+        return 0.0
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    texto = str(valor).replace("R$", "").replace(".", "").replace(",", ".")
+    try:
+        return float(texto)
+    except Exception:
+        return 0.0
+
+def buscar(linha, nomes):
+    for col in linha.index:
+        for nome in nomes:
+            if nome.lower() in col.lower():
+                return limpar(linha[col])
+    return 0.0
+
+def excel_para_pdf(arquivo):
+    subprocess.run(
+        ["libreoffice", "--headless", "--convert-to", "pdf", arquivo],
+        check=False,
+    )
+    return arquivo.replace(".xlsx", ".pdf")
+
+def calcular_idade_em_data(nascimento: date, data_referencia: date) -> int:
+    return data_referencia.year - nascimento.year - (
+        (data_referencia.month, data_referencia.day) < (nascimento.month, nascimento.day)
+    )
+
+def adicionar_meses(data_base: date, meses: int) -> date:
+    ano = data_base.year + (data_base.month - 1 + meses) // 12
+    mes = (data_base.month - 1 + meses) % 12 + 1
+    ultimo_dia = [
+        31,
+        29 if (ano % 4 == 0 and (ano % 100 != 0 or ano % 400 == 0)) else 28,
+        31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+    ][mes - 1]
+    dia = min(data_base.day, ultimo_dia)
+    return date(ano, mes, dia)
+
+def formatar_moeda(valor: float) -> str:
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def criar_zip_bytes(arquivos: list[str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for arquivo in arquivos:
+            if os.path.exists(arquivo):
+                zf.write(arquivo, arcname=os.path.basename(arquivo))
+    buffer.seek(0)
+    return buffer.getvalue()
+
+def configurar_impressao(ws, orientation="portrait"):
+    ws.page_setup.orientation = orientation
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.horizontalCentered = True
+    ws.print_options.verticalCentered = False
+
+# ---------------- EXCEL PROPOSTA ----------------
+def preencher_proposta(d, modelo=MODELO_PROPOSTA):
+    wb = load_workbook(modelo)
+    ws = wb.active
+
+    ws["E5"] = d["nome"]
+    ws["D6"] = d["cpf"]
+    ws["J6"] = d["telefone"]
+    ws["O6"] = d["fixo"]
+    ws["D7"] = d["nacionalidade"]
+    ws["J7"] = d["profissao"]
+    ws["P7"] = d["fone_pref"]
+    ws["D8"] = d["estado_civil"]
+    ws["O8"] = d["renda"]
+    ws["E9"] = d["email"]
+
+    ws["G11"] = d["conjuge"]
+    ws["D13"] = d["cpf2"]
+    ws["J13"] = d["tel2"]
+    ws["O13"] = d["fixo2"]
+    ws["D14"] = d["nac2"]
+    ws["J14"] = d["prof2"]
+    ws["P14"] = d["fone2"]
+    ws["D15"] = d["civil2"]
+    ws["O15"] = d["renda2"]
+
+    ws["G18"] = d["proprietario"]
+    ws["G19"] = d["empreendimento"]
+    ws["C20"] = d["logradouro"]
+    ws["I20"] = d["unidade"]
+    ws["Q20"] = d["area"]
+
+    ws["C21"] = d["valor_negocio"]
+    ws["J21"] = d["entrada_total"]
+    ws["O21"] = d["valor_imovel"]
+
+    ws["B24"] = 1
+    ws["C24"] = d["entrada_imovel"]
+    ws["G24"] = "Única"
+    ws["K24"] = d["data_venc_emp"]
+
+    ws["B25"] = "36x"
+    ws["C25"] = d["parcela_36"]
+    ws["G25"] = "Mensal"
+    ws["K25"] = d["data_parcelas"]
+
+    ws["B26"] = 1
+    ws["C26"] = d["saldo"]
+    ws["G26"] = "Única"
+    ws["K26"] = d["data_saldo"]
+
+    ws["P24"] = "Fixo"
+    ws["P25"] = "Reajustável"
+    ws["P26"] = "Reajustável"
+
+    ws["B33"] = 1
+    ws["C33"] = d["entrada_cliente"]
+    ws["G33"] = "Única"
+    ws["P33"] = "À vista"
+    ws["K33"] = d["data_ato"]
+    ws["K33"].alignment = Alignment(horizontal="center", vertical="center")
+
+    if d["entrada_quitada"]:
+        ws["B34"] = ""
+        ws["C34"] = ""
+        ws["G34"] = ""
+        ws["P34"] = ""
+        ws["K34"] = ""
+
+        ws["B35"] = ""
+        ws["C35"] = ""
+        ws["G35"] = ""
+        ws["P35"] = ""
+        ws["K35"] = ""
+    else:
+        ws["B34"] = d["parcelas_iguais"]
+        ws["C34"] = d["valor_parcela_igual"]
+        ws["G34"] = "Mensal" if d["parcelas_iguais"] > 0 else ""
+        ws["P34"] = "Fixo"
+        ws["K34"] = d["data_parc_entrada"]
+        ws["K34"].alignment = Alignment(horizontal="center", vertical="center")
+
+        if d["usar_diferente"]:
+            ws["B35"] = 1
+            ws["C35"] = d["parcela_diferente"]
+            ws["G35"] = "Única"
+            ws["P35"] = "Fixa"
+            ws["K35"] = d["data_parcela_diferente_manual"]
+
+            for cel in ["B35", "G35", "K35", "P35"]:
+                ws[cel].alignment = Alignment(horizontal="center", vertical="center")
+        else:
+            ws["B35"] = ""
+            ws["C35"] = ""
+            ws["G35"] = ""
+            ws["P35"] = ""
+            ws["K35"] = ""
+
+    configurar_impressao(ws, "portrait")
+
+    arquivo = "proposta.xlsx"
+    wb.save(arquivo)
+    return arquivo
+
+# ---------------- EXCEL CONTRATO ----------------
+def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
+    wb = load_workbook(modelo)
+    ws = wb.active
+
+    ws["C5"] = d["nome"]
+    ws["C6"] = d["conjuge"]
+    ws["I5"] = d["cpf"]
+    ws["I6"] = d["cpf2"]
+    ws["L5"] = d["rg"]
+    ws["L6"] = d["rg2"]
+
+    ws["C10"] = d["nome_imobiliaria"]
+    ws["C11"] = d["nome_corretor"]
+    ws["C12"] = "Monyke Procopio"
+    ws["C13"] = d["nome_gerente"]
+    ws["C14"] = d["nome_diretor"]
+
+    ws["D17"] = d["empreendimento_contrato"]
+    ws["J17"] = d["unidade"]
+    ws["J19"] = d["valor_negocio"]
+    ws["D19"] = d["data_contrato_intermediacao"]
+    ws["K23"] = d["valor_total_comissao"]
+
+    ws["E26"] = d["valor_imobiliaria"]
+    ws["E27"] = d["valor_corretor"]
+    ws["E28"] = d["valor_ato_minimo"]
+    ws["E29"] = d["valor_gerente"]
+    ws["E30"] = d["valor_total_distribuicao"]
+
+    ws["F26"] = f"{d['porcentagem_imobiliaria']:.2f}%"
+    ws["F27"] = f"{d['porcentagem_corretor']:.2f}%"
+    ws["F28"] = "0.30%"
+    ws["F29"] = f"{d['porcentagem_gerente']:.2f}%"
+    ws["F30"] = "5.30%"
+
+    ws["C50"] = d["nome_corretor"]
+    ws["J50"] = d["nome_gerente"]
+    ws["C54"] = d["nome_diretor"]
+
+    configurar_impressao(ws, "portrait")
+
+    arquivo = "contrato_intermediacao.xlsx"
+    wb.save(arquivo)
+    return arquivo
+
+
 # =========================
 # INÍCIO
 # =========================
@@ -842,7 +1150,90 @@ if not st.session_state["logado"]:
     tela_login()
     st.stop()
 
+assinatura = buscar_assinatura(st.session_state["usuario_id"])
 eh_admin = st.session_state.get("tipo") == "admin"
+acesso_liberado = eh_admin or assinatura_ativa_para_acesso(assinatura)
+
+if not acesso_liberado:
+    st.markdown("""
+    <div class="gp-card-dark">
+        <div style="font-size:1.5rem;font-weight:800;">💳 Assinatura GoPropostas</div>
+        <div style="margin-top:8px;font-size:1rem;opacity:0.92;">
+            Escolha a melhor forma para acessar o sistema:
+        </div>
+        <div style="margin-top:16px;font-size:1.95rem;font-weight:900;">
+            R$ 15,00 <span style="font-size:1rem;font-weight:500;">/ mês</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if assinatura:
+        st.info(f"Status atual: {assinatura.get('status', 'pendente')}")
+        if assinatura.get("proximo_cobranca_em") or assinatura.get("data_fim"):
+            st.caption(f"Validade / próxima cobrança: {assinatura.get('proximo_cobranca_em') or assinatura.get('data_fim')}")
+
+    col_pag_1, col_pag_2 = st.columns(2)
+
+    with col_pag_1:
+        st.markdown('<div class="gp-card">', unsafe_allow_html=True)
+        st.markdown('<div class="gp-section-title">💳 Assinatura no cartão</div>', unsafe_allow_html=True)
+        st.write("Cobrança recorrente automática mensal.")
+        if st.button("Assinar no cartão", use_container_width=True):
+            try:
+                data = criar_assinatura_mp(
+                    st.session_state["usuario_id"],
+                    st.session_state["usuario_email"]
+                )
+                link = data.get("init_point") or data.get("sandbox_init_point")
+                if link:
+                    st.link_button("👉 Ir para pagamento", link, use_container_width=True)
+                else:
+                    st.error(f"Erro ao gerar link de pagamento: {data}")
+            except Exception as e:
+                st.error(f"Erro ao iniciar assinatura: {e}")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with col_pag_2:
+        st.markdown('<div class="gp-card">', unsafe_allow_html=True)
+        st.markdown('<div class="gp-section-title">🧾 PIX mensal</div>', unsafe_allow_html=True)
+        st.write("Pague manualmente via PIX e tenha acesso por 30 dias.")
+        if st.button("Gerar PIX", use_container_width=True):
+            try:
+                data = criar_pix(
+                    st.session_state["usuario_id"],
+                    st.session_state["usuario_email"]
+                )
+
+                qr_base64 = data.get("qr_code_base64")
+                qr_text = data.get("qr_code")
+
+                if not qr_base64 and data.get("raw"):
+                    try:
+                        tx = data["raw"]["point_of_interaction"]["transaction_data"]
+                        qr_base64 = tx.get("qr_code_base64")
+                        qr_text = tx.get("qr_code")
+                    except Exception:
+                        pass
+
+                if qr_base64:
+                    st.image(f"data:image/png;base64,{qr_base64}")
+                    if qr_text:
+                        st.code(qr_text)
+                    st.success("Escaneie ou copie o PIX.")
+                    try:
+                        ticket_url = data["raw"]["point_of_interaction"]["transaction_data"]["ticket_url"]
+                    except Exception:
+                        ticket_url = None
+                    if ticket_url:
+                        st.link_button("👉 Abrir pagamento PIX", ticket_url, use_container_width=True)
+                else:
+                    st.error(f"Erro ao gerar PIX: {data}")
+            except Exception as e:
+                st.error(f"Erro ao gerar PIX: {e}")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    st.stop()
+
 
 st.sidebar.markdown("## 👤 Conta")
 st.sidebar.write(st.session_state["usuario_nome"])
