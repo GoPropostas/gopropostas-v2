@@ -424,14 +424,15 @@ def assinatura_ativa_para_acesso(assinatura: dict) -> bool:
     if not assinatura.get("assinatura_ativa"):
         return False
 
-    proximo = assinatura.get("proximo_cobranca_em") or assinatura.get("data_fim")
-    if not proximo:
+    valor_fim = assinatura.get("data_fim") or assinatura.get("proximo_cobranca_em")
+    if not valor_fim:
         return bool(assinatura.get("assinatura_ativa"))
 
     try:
-        proximo_dt = datetime.fromisoformat(str(proximo).replace("Z", "+00:00"))
-        agora = datetime.now(proximo_dt.tzinfo) if proximo_dt.tzinfo else datetime.now()
-        return proximo_dt >= agora
+        from datetime import datetime, timezone
+        fim = datetime.fromisoformat(str(valor_fim).replace("Z", "+00:00"))
+        agora = datetime.now(timezone.utc)
+        return fim >= agora
     except Exception:
         return bool(assinatura.get("assinatura_ativa"))
 
