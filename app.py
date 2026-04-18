@@ -54,8 +54,78 @@ logo_base64 = img_to_base64_segura(LOGO_PATH)
 
 st.markdown("""
 <style>
+    :root {
+        --gp-bg-1: #062B36;
+        --gp-bg-2: #073846;
+        --gp-bg-3: #0A4C5B;
+        --gp-sidebar-1: #06232C;
+        --gp-sidebar-2: #083845;
+        --gp-surface: rgba(255,255,255,0.08);
+        --gp-surface-strong: #F8FBFD;
+        --gp-surface-dark: linear-gradient(135deg, #0A3D4B 0%, #0C6D84 100%);
+        --gp-border: rgba(255,255,255,0.08);
+        --gp-border-soft: rgba(12,109,132,0.18);
+        --gp-text: #F4F7FA;
+        --gp-text-soft: rgba(244,247,250,0.82);
+        --gp-text-dark: #062B36;
+        --gp-muted: #6B7C85;
+        --gp-accent: #F97316;
+        --gp-accent-2: #FF8E2B;
+        --gp-metric-bg: #FFFFFF;
+        --gp-metric-label: #0C6D84;
+        --gp-input-bg: #FFFFFF;
+        --gp-header-bg: rgba(0, 0, 0, 0.85);
+    }
+
+    [data-theme="light"] {
+        --gp-bg-1: #F4F8FB;
+        --gp-bg-2: #EAF3F8;
+        --gp-bg-3: #DCECF5;
+        --gp-sidebar-1: #EEF5F9;
+        --gp-sidebar-2: #E2EEF5;
+        --gp-surface: rgba(255,255,255,0.78);
+        --gp-surface-strong: #FFFFFF;
+        --gp-surface-dark: linear-gradient(135deg, #F7FAFC 0%, #EAF3F8 100%);
+        --gp-border: rgba(6,43,54,0.10);
+        --gp-border-soft: rgba(6,43,54,0.16);
+        --gp-text: #062B36;
+        --gp-text-soft: rgba(6,43,54,0.78);
+        --gp-text-dark: #062B36;
+        --gp-muted: #55656F;
+        --gp-accent: #F97316;
+        --gp-accent-2: #FF8E2B;
+        --gp-metric-bg: #FFFFFF;
+        --gp-metric-label: #0C6D84;
+        --gp-input-bg: #FFFFFF;
+        --gp-header-bg: rgba(255, 255, 255, 0.90);
+    }
+
+    [data-theme="dark"] {
+        --gp-bg-1: #062B36;
+        --gp-bg-2: #073846;
+        --gp-bg-3: #0A4C5B;
+        --gp-sidebar-1: #06232C;
+        --gp-sidebar-2: #083845;
+        --gp-surface: rgba(255,255,255,0.08);
+        --gp-surface-strong: #F8FBFD;
+        --gp-surface-dark: linear-gradient(135deg, #0A3D4B 0%, #0C6D84 100%);
+        --gp-border: rgba(255,255,255,0.08);
+        --gp-border-soft: rgba(12,109,132,0.18);
+        --gp-text: #F4F7FA;
+        --gp-text-soft: rgba(244,247,250,0.82);
+        --gp-text-dark: #062B36;
+        --gp-muted: #6B7C85;
+        --gp-accent: #F97316;
+        --gp-accent-2: #FF8E2B;
+        --gp-metric-bg: #FFFFFF;
+        --gp-metric-label: #0C6D84;
+        --gp-input-bg: #FFFFFF;
+        --gp-header-bg: rgba(0, 0, 0, 0.85);
+    }
+
     .stApp {
-        background: linear-gradient(180deg, #062B36 0%, #073846 55%, #0A4C5B 100%);
+        background: linear-gradient(180deg, var(--gp-bg-1) 0%, var(--gp-bg-2) 55%, var(--gp-bg-3) 100%);
+        color: var(--gp-text);
     }
 
     .block-container {
@@ -65,7 +135,7 @@ st.markdown("""
     }
 
     header[data-testid="stHeader"] {
-        background: rgba(0, 0, 0, 0.85);
+        background: var(--gp-header-bg);
     }
 
     [data-testid="stToolbar"] {
@@ -73,12 +143,12 @@ st.markdown("""
     }
 
     [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #06232C 0%, #083845 100%);
-        border-right: 1px solid rgba(255,255,255,0.08);
+        background: linear-gradient(180deg, var(--gp-sidebar-1) 0%, var(--gp-sidebar-2) 100%);
+        border-right: 1px solid var(--gp-border);
     }
 
     [data-testid="stSidebar"] * {
-        color: #F4F7FA !important;
+        color: var(--gp-text) !important;
     }
 
     section[data-testid="stSidebar"] .stSelectbox,
@@ -111,10 +181,10 @@ st.markdown("""
         margin-bottom: 20px;
         padding: 18px 24px;
         border-radius: 24px;
-        background: rgba(255,255,255,0.06);
-        border: 1px solid rgba(255,255,255,0.08);
+        background: var(--gp-surface);
+        border: 1px solid var(--gp-border);
         backdrop-filter: blur(12px);
-        box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+        box-shadow: 0 12px 32px rgba(0,0,0,0.12);
         overflow: visible;
         min-height: 116px;
     }
@@ -130,7 +200,7 @@ st.markdown("""
     }
 
     .gp-title {
-        color: #F4F7FA;
+        color: var(--gp-text);
         font-size: 2rem;
         font-weight: 800;
         margin: 0;
@@ -138,75 +208,76 @@ st.markdown("""
     }
 
     .gp-subtitle {
-        color: rgba(244,247,250,0.82);
+        color: var(--gp-text-soft);
         font-size: 0.98rem;
         margin-top: 4px;
     }
 
     .gp-card {
-        background: #F8FBFD;
+        background: var(--gp-surface-strong);
         border-radius: 24px;
         padding: 22px 24px;
-        box-shadow: 0 12px 28px rgba(0,0,0,0.16);
+        box-shadow: 0 12px 28px rgba(0,0,0,0.10);
         border: 1px solid rgba(12,109,132,0.10);
         margin-bottom: 18px;
     }
 
     .gp-card,
     .gp-card * {
-        color: #062B36 !important;
+        color: var(--gp-text-dark) !important;
     }
 
     .gp-card-dark {
-        background: linear-gradient(135deg, #0A3D4B 0%, #0C6D84 100%);
-        color: white;
+        background: var(--gp-surface-dark);
+        color: var(--gp-text);
         border-radius: 24px;
         padding: 22px 24px;
-        box-shadow: 0 12px 28px rgba(0,0,0,0.22);
+        box-shadow: 0 12px 28px rgba(0,0,0,0.14);
         margin-bottom: 18px;
+        border: 1px solid var(--gp-border);
     }
 
     .gp-card-dark,
     .gp-card-dark * {
-        color: white !important;
+        color: var(--gp-text) !important;
     }
 
     .gp-section-title {
-        color: #062B36;
+        color: var(--gp-text-dark);
         font-size: 1.15rem;
         font-weight: 800;
         margin-bottom: 14px;
     }
 
     .gp-card-dark .gp-section-title {
-        color: white !important;
+        color: var(--gp-text) !important;
     }
 
     div[data-testid="stMetric"] {
-        background: white;
+        background: var(--gp-metric-bg);
         border-radius: 18px;
         padding: 14px 16px;
         border: 1px solid rgba(12,109,132,0.10);
-        box-shadow: 0 8px 18px rgba(0,0,0,0.08);
+        box-shadow: 0 8px 18px rgba(0,0,0,0.06);
     }
 
     div[data-testid="stMetric"] * {
-        color: #062B36 !important;
+        color: var(--gp-text-dark) !important;
     }
 
     div[data-testid="stMetricLabel"] {
-        color: #0C6D84 !important;
+        color: var(--gp-metric-label) !important;
         font-weight: 700 !important;
     }
 
     div[data-testid="stMetricValue"] {
-        color: #062B36 !important;
+        color: var(--gp-text-dark) !important;
         font-weight: 800 !important;
     }
 
     .stButton > button,
     .stDownloadButton > button {
-        background: linear-gradient(90deg, #F97316 0%, #FF8E2B 100%) !important;
+        background: linear-gradient(90deg, var(--gp-accent) 0%, var(--gp-accent-2) 100%) !important;
         color: white !important;
         border: none !important;
         border-radius: 14px !important;
@@ -223,11 +294,11 @@ st.markdown("""
     div[data-baseweb="input"] input,
     div[data-baseweb="base-input"] input {
         border-radius: 14px !important;
-        border: 1px solid rgba(12,109,132,0.18) !important;
-        background: #FFFFFF !important;
-        color: #062B36 !important;
-        -webkit-text-fill-color: #062B36 !important;
-        caret-color: #062B36 !important;
+        border: 1px solid var(--gp-border-soft) !important;
+        background: var(--gp-input-bg) !important;
+        color: var(--gp-text-dark) !important;
+        -webkit-text-fill-color: var(--gp-text-dark) !important;
+        caret-color: var(--gp-text-dark) !important;
     }
 
     .stTextInput > div > div > input::placeholder,
@@ -236,17 +307,21 @@ st.markdown("""
     .stTextArea textarea::placeholder,
     div[data-baseweb="input"] input::placeholder,
     div[data-baseweb="base-input"] input::placeholder {
-        color: #6B7C85 !important;
+        color: var(--gp-muted) !important;
         opacity: 1 !important;
     }
 
     .stSelectbox div[data-baseweb="select"] * {
-        color: #062B36 !important;
+        color: var(--gp-text-dark) !important;
     }
 
     .stDateInput svg,
     .stSelectbox svg {
-        fill: #062B36 !important;
+        fill: var(--gp-text-dark) !important;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        color: var(--gp-text) !important;
     }
 </style>
 """, unsafe_allow_html=True)
