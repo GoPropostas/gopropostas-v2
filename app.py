@@ -1618,9 +1618,8 @@ def render_admin_assinaturas_page():
     if not filtrados:
         st.info("Nenhum usuário encontrado.")
     else:
-        
-    for i, u in enumerate(filtrados):
-        with st.expander(f"{u['nome']} | {u['status']} | Ativo: {u['ativo']}"):
+        for i, u in enumerate(filtrados):
+            with st.expander(f"{u['nome']} | {u['status']} | Ativo: {u['ativo']}"):
             st.write(f"**Email:** {u['email']}")
             st.write(f"**Tipo:** {u['tipo']}")
 
