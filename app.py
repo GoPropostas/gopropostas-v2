@@ -1,605 +1,147 @@
-import os
-import io
-import base64
-import zipfile
-import subprocess
-from pathlib import Path
-from datetime import date, datetime
-
-import pandas as pd
-import requests
 import streamlit as st
-from openpyxl import load_workbook
-from openpyxl.styles import Alignment
+import requests
 from supabase import Client, create_client
-from PIL import Image, UnidentifiedImageError
+from datetime import datetime, timedelta, timezone
 
-st.set_page_config(
-    page_title="GoPropostas",
-    page_icon="📄",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="GoPropostas", page_icon="📄", layout="wide", initial_sidebar_state="expanded")
 
+SUPABASE_URL = st.secrets["SUPABASE_URL"].strip()
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"].strip()
 EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = st.secrets["EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL"].strip()
 EDGE_FUNCTION_CREATE_PIX_URL = st.secrets["EDGE_FUNCTION_CREATE_PIX_URL"].strip()
-LOGO_CANDIDATES = ["logo.png", "Apresentação de logo moderno e profissional.png"]
-CONTRATO_INTERMEDIACAO_MODELO = "Contrato de Intermediação (3).xlsx"
-MODELO_PROPOSTA = "modelo_proposta.xlsx"
-
-# ---------------- VISUAL ----------------
-def encontrar_logo() -> str:
-    for nome in LOGO_CANDIDATES:
-        if Path(nome).exists():
-            return nome
-    return ""
-
-def img_to_base64_segura(path: str) -> str:
-    if not path or not Path(path).exists():
-        return ""
-    try:
-        with Image.open(path) as img:
-            img.verify()
-        with open(path, "rb") as f:
-            return base64.b64encode(f.read()).decode()
-    except (UnidentifiedImageError, OSError, Exception):
-        return ""
-
-LOGO_PATH = encontrar_logo()
-logo_base64 = img_to_base64_segura(LOGO_PATH)
 
 st.markdown("""
 <style>
-    .stApp {
-        background: linear-gradient(180deg, #062B36 0%, #073846 55%, #0A4C5B 100%);
-    }
-
-    .block-container {
-        padding-top: 5rem !important;
-        padding-bottom: 2rem;
-        max-width: 1380px;
-    }
-
-    header[data-testid="stHeader"] {
-        background: rgba(0, 0, 0, 0.85);
-    }
-
-    [data-testid="stToolbar"] {
-        right: 1rem;
-    }
-
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #06232C 0%, #083845 100%);
-        border-right: 1px solid rgba(255,255,255,0.08);
-    }
-
-    [data-testid="stSidebar"] * {
-        color: #F4F7FA !important;
-    }
-
-    .gp-topbar-wrap {
-        padding-top: 0.75rem;
-        margin-bottom: 1.25rem;
-    }
-
-    .gp-topbar {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 18px;
-        margin-top: 0;
-        margin-bottom: 20px;
-        padding: 18px 24px;
-        border-radius: 24px;
-        background: rgba(255,255,255,0.06);
-        border: 1px solid rgba(255,255,255,0.08);
-        backdrop-filter: blur(12px);
-        box-shadow: 0 12px 32px rgba(0,0,0,0.18);
-        overflow: visible;
-        min-height: 116px;
-    }
-
-    .gp-topbar img {
-        max-height: 78px;
-        height: auto;
-        width: auto;
-        object-fit: contain;
-        display: block;
-        border-radius: 12px;
-        flex-shrink: 0;
-    }
-
-    .gp-title {
-        color: #F4F7FA;
-        font-size: 2rem;
-        font-weight: 800;
-        margin: 0;
-        line-height: 1.1;
-    }
-
-    .gp-subtitle {
-        color: rgba(244,247,250,0.82);
-        font-size: 0.98rem;
-        margin-top: 4px;
-    }
-
-    .gp-card {
-        background: #F8FBFD;
-        border-radius: 24px;
-        padding: 22px 24px;
-        box-shadow: 0 12px 28px rgba(0,0,0,0.16);
-        border: 1px solid rgba(12,109,132,0.10);
-        margin-bottom: 18px;
-    }
-
-    .gp-card,
-    .gp-card * {
-        color: #062B36 !important;
-    }
-
-    .gp-card-dark {
-        background: linear-gradient(135deg, #0A3D4B 0%, #0C6D84 100%);
-        color: white;
-        border-radius: 24px;
-        padding: 22px 24px;
-        box-shadow: 0 12px 28px rgba(0,0,0,0.22);
-        margin-bottom: 18px;
-    }
-
-    .gp-card-dark,
-    .gp-card-dark * {
-        color: white !important;
-    }
-
-    .gp-section-title {
-        color: #062B36;
-        font-size: 1.15rem;
-        font-weight: 800;
-        margin-bottom: 14px;
-    }
-
-    .gp-card-dark .gp-section-title {
-        color: white !important;
-    }
-
-    .gp-highlight {
-        color: #F97316 !important;
-        font-weight: 800;
-    }
-
-    div[data-testid="stMetric"] {
-        background: white;
-        border-radius: 18px;
-        padding: 14px 16px;
-        border: 1px solid rgba(12,109,132,0.10);
-        box-shadow: 0 8px 18px rgba(0,0,0,0.08);
-    }
-
-    div[data-testid="stMetric"] * {
-        color: #062B36 !important;
-    }
-
-    div[data-testid="stMetricLabel"] {
-        color: #0C6D84 !important;
-        font-weight: 700 !important;
-    }
-
-    div[data-testid="stMetricValue"] {
-        color: #062B36 !important;
-        font-weight: 800 !important;
-    }
-
-    .stButton > button,
-    .stDownloadButton > button {
-        background: linear-gradient(90deg, #F97316 0%, #FF8E2B 100%) !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 14px !important;
-        font-weight: 800 !important;
-        min-height: 46px !important;
-        box-shadow: 0 10px 18px rgba(249,115,22,0.28) !important;
-    }
-
-    .stButton > button:hover,
-    .stDownloadButton > button:hover {
-        transform: translateY(-1px);
-        filter: brightness(1.03);
-    }
-
-    .stTextInput > div > div > input,
-    .stNumberInput input,
-    .stDateInput input,
-    .stSelectbox div[data-baseweb="select"] > div,
-    .stTextArea textarea,
-    div[data-baseweb="input"] input,
-    div[data-baseweb="base-input"] input {
-        border-radius: 14px !important;
-        border: 1px solid rgba(12,109,132,0.18) !important;
-        background: #FFFFFF !important;
-        color: #062B36 !important;
-        -webkit-text-fill-color: #062B36 !important;
-        caret-color: #062B36 !important;
-    }
-
-    .stTextInput > div > div > input::placeholder,
-    .stNumberInput input::placeholder,
-    .stDateInput input::placeholder,
-    .stTextArea textarea::placeholder,
-    div[data-baseweb="input"] input::placeholder,
-    div[data-baseweb="base-input"] input::placeholder {
-        color: #6B7C85 !important;
-        opacity: 1 !important;
-    }
-
-    .stSelectbox div[data-baseweb="select"] * {
-        color: #062B36 !important;
-    }
-
-    .stDateInput svg,
-    .stSelectbox svg {
-        fill: #062B36 !important;
-    }
-
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        background: rgba(255,255,255,0.08);
-        color: #F4F7FA;
-        border-radius: 12px;
-        padding: 10px 16px;
-    }
-
-    .stTabs [aria-selected="true"] {
-        background: #F97316 !important;
-        color: white !important;
-    }
-
-    hr {
-        border-color: rgba(255,255,255,0.12);
-    }
-
-    .gp-mini {
-        color: rgba(255,255,255,0.85);
-        font-size: 0.95rem;
-    }
-
-    label, .stMarkdown, .stCaption, p, span {
-        color: inherit;
-    }
-
-    @media (max-width: 900px) {
-        .block-container {
-            padding-top: 4.5rem !important;
-        }
-
-        .gp-topbar {
-            flex-direction: column;
-            text-align: center;
-            min-height: auto;
-            padding: 18px;
-        }
-
-        .gp-topbar img {
-            max-height: 70px;
-        }
-    }
-
-    .gp-hero-wrap {
-        margin-bottom: 1.25rem;
-    }
-
-    .gp-hero {
-        position: relative;
-        overflow: hidden;
-        border-radius: 30px;
-        padding: 28px 30px;
-        background:
-            radial-gradient(circle at top right, rgba(255,255,255,0.10), transparent 30%),
-            linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%);
-        border: 1px solid rgba(255,255,255,0.10);
-        box-shadow:
-            0 18px 50px rgba(0,0,0,0.28),
-            inset 0 1px 0 rgba(255,255,255,0.05);
-        backdrop-filter: blur(12px);
-    }
-
-    .gp-hero::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
-        transform: translateX(-100%);
-        animation: gpShine 4.5s linear infinite;
-    }
-
-    @keyframes gpShine {
-        100% { transform: translateX(100%); }
-    }
-
-    .gp-hero-grid {
-        position: relative;
-        z-index: 1;
-        display: grid;
-        grid-template-columns: 90px 1fr auto;
-        gap: 18px;
-        align-items: center;
-    }
-
-    .gp-logo-shell {
-        width: 82px;
-        height: 82px;
-        border-radius: 22px;
-        background: rgba(255,255,255,0.07);
-        border: 1px solid rgba(255,255,255,0.08);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-    }
-
-    .gp-logo-shell img {
-        max-width: 64px;
-        max-height: 64px;
-        object-fit: contain;
-        border-radius: 12px;
-    }
-
-    .gp-logo-fallback {
-        font-size: 2rem;
-    }
-
-    .gp-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 8px 12px;
-        border-radius: 999px;
-        background: rgba(249,115,22,0.14);
-        border: 1px solid rgba(249,115,22,0.22);
-        color: #FFD6B0 !important;
-        font-size: 0.86rem;
-        font-weight: 700;
-        margin-bottom: 10px;
-    }
-
-    .gp-title {
-        color: #F4F7FA;
-        font-size: 2.1rem;
-        font-weight: 900;
-        letter-spacing: -0.02em;
-        line-height: 1.05;
-        margin: 0;
-    }
-
-    .gp-subtitle {
-        color: rgba(244,247,250,0.82);
-        font-size: 1rem;
-        margin-top: 8px;
-        max-width: 760px;
-    }
-
-    .gp-hero-side {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-    }
-
-    .gp-chip {
-        padding: 10px 14px;
-        border-radius: 16px;
-        background: rgba(255,255,255,0.06);
-        border: 1px solid rgba(255,255,255,0.08);
-        color: #E8F3F6 !important;
-        font-size: 0.9rem;
-        font-weight: 700;
-        white-space: nowrap;
-    }
-
-    @media (max-width: 900px) {
-        .gp-hero-grid {
-            grid-template-columns: 1fr;
-            gap: 14px;
-            text-align: center;
-        }
-        .gp-logo-shell {
-            margin: 0 auto;
-        }
-        .gp-hero-side {
-            justify-content: center;
-        }
-        .gp-title {
-            font-size: 1.8rem;
-        }
-    }
-
+.stApp { background: linear-gradient(180deg, #062B36 0%, #073846 55%, #0A4C5B 100%); }
+.block-container { padding-top: 2rem !important; padding-bottom: 2rem; max-width: 1380px; }
+.gp-topbar { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:20px; padding:20px 24px; border-radius:24px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.08); backdrop-filter:blur(12px); box-shadow:0 12px 32px rgba(0,0,0,0.18); }
+.gp-title { color:#F4F7FA; font-size:2rem; font-weight:900; margin:0; }
+.gp-subtitle { color:rgba(244,247,250,0.84); margin-top:4px; font-size:1rem; }
+.gp-card { background:#F8FBFD; border-radius:24px; padding:22px 24px; box-shadow:0 12px 28px rgba(0,0,0,0.16); border:1px solid rgba(12,109,132,0.10); margin-bottom:18px; }
+.gp-card, .gp-card * { color:#062B36 !important; }
+.gp-card-dark { background:linear-gradient(135deg, #0A3D4B 0%, #0C6D84 100%); color:white; border-radius:24px; padding:22px 24px; box-shadow:0 12px 28px rgba(0,0,0,0.22); margin-bottom:18px; }
+.gp-card-dark, .gp-card-dark * { color:white !important; }
+.gp-section-title { font-size:1.15rem; font-weight:800; margin-bottom:14px; }
+.stButton > button, .stDownloadButton > button, .stLinkButton > a { background:linear-gradient(90deg, #F97316 0%, #FF8E2B 100%) !important; color:white !important; border:none !important; border-radius:14px !important; font-weight:800 !important; min-height:42px !important; width:100%; box-shadow:0 10px 18px rgba(249,115,22,0.28) !important; text-align:center !important; }
+.stTextInput > div > div > input, .stNumberInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] > div { border-radius:14px !important; border:1px solid rgba(12,109,132,0.18) !important; background:#FFFFFF !important; color:#062B36 !important; -webkit-text-fill-color:#062B36 !important; caret-color:#062B36 !important; }
+.stTabs [data-baseweb="tab"] { background:rgba(255,255,255,0.08); color:#F4F7FA; border-radius:12px; padding:10px 16px; }
+.stTabs [aria-selected="true"] { background:#F97316 !important; color:white !important; }
+div[data-testid="stMetric"] { background:white; border-radius:18px; padding:14px 16px; border:1px solid rgba(12,109,132,0.10); box-shadow:0 8px 18px rgba(0,0,0,0.08); }
+div[data-testid="stMetric"] * { color:#062B36 !important; }
+.plano-hero { background:linear-gradient(135deg, #062B36 0%, #0C6D84 100%); border-radius:28px; padding:34px 30px; color:white; box-shadow:0 18px 40px rgba(0,0,0,0.22); border:1px solid rgba(255,255,255,0.08); margin-bottom:22px; }
+.plano-hero h1 { margin:0; font-size:2rem; font-weight:900; }
+.plano-hero p { margin-top:10px; font-size:1rem; color:rgba(255,255,255,0.88); }
+.plano-card { background:#F8FBFD; border-radius:24px; padding:26px 24px; box-shadow:0 14px 32px rgba(0,0,0,0.12); border:1px solid rgba(12,109,132,0.10); min-height:340px; }
+.plano-card h3 { margin:0 0 10px 0; color:#062B36; font-size:1.25rem; font-weight:800; }
+.plano-valor { font-size:2.1rem; font-weight:900; color:#F97316; margin-bottom:14px; }
+.plano-valor span { font-size:1rem; color:#5C6C74; font-weight:600; }
+.plano-mini { margin-top:18px; color:#5C6C74; font-size:0.95rem; }
+.plano-badge { display:inline-block; padding:8px 12px; border-radius:999px; background:rgba(255,255,255,0.08); color:#F4F7FA; font-size:0.9rem; margin-top:12px; }
 </style>
 """, unsafe_allow_html=True)
 
-topo_html = f"""
-<div class="gp-hero-wrap">
-    <div class="gp-hero">
-        <div class="gp-hero-grid">
-            <div class="gp-logo-shell">
-                {"<img src='data:image/png;base64," + logo_base64 + "' alt='Logo'>" if logo_base64 else "<div class='gp-logo-fallback'>🚀</div>"}
-            </div>
-
-            <div class="gp-hero-text">
-                <div class="gp-badge">● Plataforma Premium</div>
-                <div class="gp-title">GoPropostas</div>
-                <div class="gp-subtitle">Sistema corporativo de propostas imobiliárias com propostas, contratos, pagamentos e gestão comercial em um só lugar.</div>
-            </div>
-
-            <div class="gp-hero-side">
-                <div class="gp-chip">Propostas</div>
-                <div class="gp-chip">Contratos</div>
-                <div class="gp-chip">Pagamentos</div>
-            </div>
-        </div>
+st.markdown("""
+<div class="gp-topbar">
+    <div>
+        <div class="gp-title">GoPropostas</div>
+        <div class="gp-subtitle">Sistema corporativo de propostas imobiliárias</div>
     </div>
 </div>
-"""
-st.markdown(topo_html, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# ---------------- SUPABASE LOGIN ----------------
 @st.cache_resource
 def get_supabase() -> Client:
-    return create_client(
-        st.secrets["SUPABASE_URL"].strip(),
-        st.secrets["SUPABASE_KEY"].strip(),
-    )
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def buscar_profile_por_id(user_id: str):
-    supabase = get_supabase()
-    resp = (
-        supabase.table("profiles")
-        .select("*")
-        .eq("id", user_id)
-        .limit(1)
-        .execute()
-    )
-    return resp.data[0] if resp.data else None
+    try:
+        resp = get_supabase().table("profiles").select("*").eq("id", user_id).limit(1).execute()
+        return resp.data[0] if resp.data else None
+    except Exception:
+        return None
 
 def buscar_profile_por_email(email: str):
-    supabase = get_supabase()
-    resp = (
-        supabase.table("profiles")
-        .select("*")
-        .eq("email", email)
-        .limit(1)
-        .execute()
-    )
-    return resp.data[0] if resp.data else None
-
-def buscar_assinatura(user_id: str):
-    supabase = get_supabase()
-    resp = (
-        supabase.table("assinaturas")
-        .select("*")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
-    return resp.data[0] if resp.data else None
-
-def assinatura_ativa_para_acesso(assinatura: dict) -> bool:
-    if not assinatura:
-        return False
-    if not assinatura.get("assinatura_ativa"):
-        return False
-
-    proximo = assinatura.get("proximo_cobranca_em")
-    if not proximo:
-        return bool(assinatura.get("assinatura_ativa"))
-
     try:
-        proximo_dt = datetime.fromisoformat(str(proximo).replace("Z", "+00:00"))
-        agora = datetime.now(proximo_dt.tzinfo) if proximo_dt.tzinfo else datetime.now()
-        return proximo_dt >= agora
+        resp = get_supabase().table("profiles").select("*").eq("email", email).limit(1).execute()
+        return resp.data[0] if resp.data else None
     except Exception:
-        return bool(assinatura.get("assinatura_ativa"))
-
-def atualizar_profile_config(user_id: str, nome: str, nome_imobiliaria: str, nome_gerente: str, nome_diretor: str):
-    return (
-        get_supabase()
-        .table("profiles")
-        .update({
-            "nome": nome,
-            "nome_imobiliaria": nome_imobiliaria,
-            "nome_gerente": nome_gerente,
-            "nome_diretor": nome_diretor,
-        })
-        .eq("id", user_id)
-        .execute()
-    )
-
-def criar_assinatura_mp(user_id: str, email: str):
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {st.secrets['SUPABASE_KEY'].strip()}"
-    }
-    payload = {"user_id": user_id, "email": email}
-
-    resp = requests.post(
-        EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL,
-        json=payload,
-        headers=headers,
-        timeout=30,
-    )
-
-    try:
-        return resp.json()
-    except Exception:
-        return {
-            "error": f"Resposta inválida da função: status {resp.status_code}",
-            "raw_text": resp.text,
-        }
-
-def criar_pix(user_id: str, email: str):
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {st.secrets['SUPABASE_KEY'].strip()}"
-    }
-    payload = {"user_id": user_id, "email": email}
-
-    resp = requests.post(
-        EDGE_FUNCTION_CREATE_PIX_URL,
-        json=payload,
-        headers=headers,
-        timeout=30,
-    )
-
-    try:
-        return resp.json()
-    except Exception:
-        return {
-            "error": f"Resposta inválida da função PIX: status {resp.status_code}",
-            "raw_text": resp.text,
-        }
+        return None
 
 def login_com_supabase(email: str, senha: str):
-    supabase = get_supabase()
-    return supabase.auth.sign_in_with_password({
-        "email": email,
-        "password": senha,
-    })
+    return get_supabase().auth.sign_in_with_password({"email": email, "password": senha})
 
-def cadastrar_com_supabase(
-    nome: str,
-    email: str,
-    senha: str,
-    nome_imobiliaria: str,
-    nome_gerente: str,
-    nome_diretor: str,
-):
-    supabase = get_supabase()
-    return supabase.auth.sign_up({
-        "email": email,
-        "password": senha,
-        "options": {
-            "data": {
-                "nome": nome,
-                "nome_imobiliaria": nome_imobiliaria,
-                "nome_gerente": nome_gerente,
-                "nome_diretor": nome_diretor,
-            }
-        }
-    })
+def cadastrar_com_supabase(nome: str, email: str, senha: str):
+    return get_supabase().auth.sign_up({"email": email, "password": senha, "options": {"data": {"nome": nome}}})
+
+def buscar_assinatura(user_id: str):
+    try:
+        resp = get_supabase().table("assinaturas").select("*").eq("user_id", user_id).order("created_at", desc=True).limit(1).execute()
+        return resp.data[0] if resp.data else None
+    except Exception:
+        return None
+
+def assinatura_ativa_para_acesso(assinatura: dict) -> bool:
+    if not assinatura or not assinatura.get("assinatura_ativa"):
+        return False
+    fim = assinatura.get("data_fim") or assinatura.get("proximo_cobranca_em")
+    if not fim:
+        return True
+    try:
+        fim_dt = datetime.fromisoformat(str(fim).replace("Z", "+00:00"))
+        return fim_dt >= datetime.now(timezone.utc)
+    except Exception:
+        return True
+
+def buscar_assinatura_por_user_id(user_id: str):
+    return buscar_assinatura(user_id)
+
+def upsert_assinatura(user_id: str, dados: dict):
+    assinatura = buscar_assinatura_por_user_id(user_id)
+    if assinatura:
+        return get_supabase().table("assinaturas").update(dados).eq("id", assinatura["id"]).execute()
+    return get_supabase().table("assinaturas").insert({"user_id": user_id, **dados}).execute()
+
+def liberar_30_dias(user_id: str):
+    agora = datetime.now(timezone.utc)
+    fim = agora + timedelta(days=30)
+    return upsert_assinatura(user_id, {"status":"ativo","pagamento_status":"manual","assinatura_ativa":True,"data_inicio":agora.isoformat(),"data_fim":fim.isoformat(),"updated_at":agora.isoformat()})
+
+def bloquear_usuario(user_id: str):
+    agora = datetime.now(timezone.utc)
+    return upsert_assinatura(user_id, {"status":"bloqueado","pagamento_status":"bloqueado","assinatura_ativa":False,"updated_at":agora.isoformat()})
+
+def renovar_usuario(user_id: str, dias: int):
+    atual = buscar_assinatura_por_user_id(user_id)
+    agora = datetime.now(timezone.utc)
+    base = agora
+    if atual and (atual.get("data_fim") or atual.get("proximo_cobranca_em")):
+        try:
+            data_base = datetime.fromisoformat(str(atual.get("data_fim") or atual.get("proximo_cobranca_em")).replace("Z", "+00:00"))
+            if data_base > agora:
+                base = data_base
+        except Exception:
+            pass
+    fim = base + timedelta(days=dias)
+    return upsert_assinatura(user_id, {"status":"ativo","pagamento_status":"renovado_manual","assinatura_ativa":True,"data_inicio": atual.get("data_inicio") if atual and atual.get("data_inicio") else agora.isoformat(),"data_fim":fim.isoformat(),"updated_at":agora.isoformat()})
+
+def criar_pix_mp(user_id: str, email: str):
+    headers = {"Content-Type":"application/json","Authorization":f"Bearer {SUPABASE_KEY}"}
+    resp = requests.post(EDGE_FUNCTION_CREATE_PIX_URL, json={"user_id": user_id, "email": email}, headers=headers, timeout=30)
+    try:
+        return resp.json()
+    except Exception:
+        return {"error": resp.text}
+
+def criar_assinatura_mp(user_id: str, email: str):
+    headers = {"Content-Type":"application/json","Authorization":f"Bearer {SUPABASE_KEY}"}
+    resp = requests.post(EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL, json={"user_id": user_id, "email": email}, headers=headers, timeout=30)
+    try:
+        return resp.json()
+    except Exception:
+        return {"error": resp.text}
 
 def init_auth_state():
-    defaults = {
-        "logado": False,
-        "usuario_id": "",
-        "usuario_email": "",
-        "usuario_nome": "",
-        "tipo": "",
-        "sb_access_token": "",
-        "sb_refresh_token": "",
-        "abrir_configuracoes": False,
-    }
+    defaults = {"logado":False,"usuario_id":"","usuario_email":"","usuario_nome":"","tipo":"","sb_access_token":"","sb_refresh_token":""}
     for chave, valor in defaults.items():
         if chave not in st.session_state:
             st.session_state[chave] = valor
@@ -620,130 +162,217 @@ def salvar_tokens_da_sessao(auth_response):
 def tentar_restaurar_sessao():
     if st.session_state.get("logado"):
         return
-
     access_token = st.session_state.get("sb_access_token", "")
     refresh_token = st.session_state.get("sb_refresh_token", "")
-
     if not access_token or not refresh_token:
         return
-
     try:
         supabase = get_supabase()
         supabase.auth.set_session(access_token, refresh_token)
         sessao = supabase.auth.get_session()
         session = getattr(sessao, "session", None)
-
         if not session or not session.user:
             return
-
         profile = buscar_profile_por_id(session.user.id)
         if profile:
             aplicar_login(profile)
     except Exception:
         pass
 
+def logout():
+    if st.sidebar.button("🚪 Sair", use_container_width=True):
+        try:
+            get_supabase().auth.sign_out()
+        except Exception:
+            pass
+        for chave in list(st.session_state.keys()):
+            del st.session_state[chave]
+        st.rerun()
+
 def tela_login():
     st.markdown('<div class="gp-card-dark">', unsafe_allow_html=True)
     st.title("🔐 Entrar no sistema")
-    st.markdown('<div class="gp-mini">Acesse ou crie sua conta para continuar.</div>', unsafe_allow_html=True)
-
+    st.write("Acesse sua conta ou crie seu cadastro para continuar.")
     abas = st.tabs(["Login", "Criar conta"])
-
     with abas[0]:
         email = st.text_input("Email", key="login_email")
         senha = st.text_input("Senha", type="password", key="login_senha")
-
         if st.button("Entrar", key="btn_login", use_container_width=True):
             try:
                 resp = login_com_supabase(email, senha)
                 user = resp.user
-
                 if not user:
                     st.error("Email ou senha inválidos.")
                     return
-
                 salvar_tokens_da_sessao(resp)
-
                 profile = buscar_profile_por_id(user.id)
                 if not profile:
-                    st.error("Perfil não encontrado. Verifique se o trigger do Supabase foi criado.")
+                    st.error("Perfil não encontrado.")
                     return
-
                 aplicar_login(profile)
                 st.success("Login realizado com sucesso!")
                 st.rerun()
-
             except Exception as e:
                 st.error(f"Erro no login: {e}")
-
     with abas[1]:
         nome_cadastro = st.text_input("Nome completo", key="cad_nome")
-        nome_imobiliaria = st.text_input("Nome da Imobiliária completo", key="cad_imobiliaria")
-        nome_gerente = st.text_input("Nome do gerente completo", key="cad_gerente")
-        nome_diretor = st.text_input("Nome do diretor da imobiliária completo", key="cad_diretor")
         email_cadastro = st.text_input("Email", key="cad_email")
         senha_cadastro = st.text_input("Senha", type="password", key="cad_senha")
         confirmar = st.text_input("Confirmar senha", type="password", key="cad_confirm")
-
         if st.button("Criar conta", key="btn_cadastro", use_container_width=True):
             if senha_cadastro != confirmar:
                 st.warning("Senhas não conferem.")
                 return
-
-            if (
-                not nome_cadastro.strip()
-                or not nome_imobiliaria.strip()
-                or not nome_gerente.strip()
-                or not nome_diretor.strip()
-                or not email_cadastro.strip()
-                or not senha_cadastro.strip()
-            ):
+            if not nome_cadastro.strip() or not email_cadastro.strip() or not senha_cadastro.strip():
                 st.warning("Preencha todos os campos.")
                 return
-
             try:
                 existente = buscar_profile_por_email(email_cadastro)
                 if existente:
                     st.warning("Já existe uma conta com esse email.")
                     return
-
-                resp = cadastrar_com_supabase(
-                    nome_cadastro,
-                    email_cadastro,
-                    senha_cadastro,
-                    nome_imobiliaria,
-                    nome_gerente,
-                    nome_diretor,
-                )
+                resp = cadastrar_com_supabase(nome_cadastro, email_cadastro, senha_cadastro)
                 user = resp.user
-
                 if user:
                     st.success("Conta criada com sucesso! Agora faça login.")
                 else:
                     st.success("Conta criada! Verifique seu email para confirmar o cadastro antes de entrar.")
-
             except Exception as e:
                 st.error(f"Erro ao criar conta: {e}")
-
     st.markdown("</div>", unsafe_allow_html=True)
 
-def logout():
-    if st.sidebar.button("🚪 Sair", key="logout", use_container_width=True):
-        try:
-            get_supabase().auth.sign_out()
-        except Exception:
-            pass
+def tela_plano_pagamento(usuario_id: str, usuario_email: str):
+    st.markdown('<div class="plano-hero"><h1>Seu acesso está quase pronto</h1><p>Escolha a forma de pagamento abaixo para liberar sua conta e começar a usar o GoPropostas com acesso completo às propostas, contratos e recursos do sistema.</p><div class="plano-badge">Plano único: R$ 15,00 / mês</div></div>', unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown('<div class="plano-card"><h3>🧾 PIX mensal</h3><div class="plano-valor">R$ 15,00 <span>/ mês</span></div><ul><li>Pagamento rápido via PIX</li><li>Liberação por 30 dias</li><li>Ideal para quem prefere pagar manualmente</li><li>Acesso completo ao sistema</li></ul><div class="plano-mini">Gere o QR Code e pague em poucos segundos.</div></div>', unsafe_allow_html=True)
+        if st.button("Gerar PIX", key="btn_pix_plano", use_container_width=True):
+            with st.spinner("Gerando PIX..."):
+                try:
+                    data = criar_pix_mp(usuario_id, usuario_email)
+                    qr_base64 = data.get("qr_code_base64")
+                    qr_text = data.get("qr_code")
+                    if not qr_base64 and data.get("raw"):
+                        try:
+                            tx = data["raw"]["point_of_interaction"]["transaction_data"]
+                            qr_base64 = tx.get("qr_code_base64")
+                            qr_text = tx.get("qr_code")
+                        except Exception:
+                            pass
+                    if qr_base64:
+                        st.success("PIX gerado com sucesso.")
+                        st.image(f"data:image/png;base64,{qr_base64}")
+                        if qr_text:
+                            st.code(qr_text)
+                        try:
+                            ticket_url = data["raw"]["point_of_interaction"]["transaction_data"]["ticket_url"]
+                            if ticket_url:
+                                st.link_button("Abrir pagamento", ticket_url, use_container_width=True)
+                        except Exception:
+                            pass
+                    else:
+                        st.error(f"Erro ao gerar PIX: {data}")
+                except Exception as e:
+                    st.error(f"Erro ao gerar PIX: {e}")
+    with col2:
+        st.markdown('<div class="plano-card"><h3>💳 Assinatura automática</h3><div class="plano-valor">R$ 15,00 <span>/ mês</span></div><ul><li>Cobrança recorrente automática</li><li>Maior praticidade no dia a dia</li><li>Sem precisar gerar novo pagamento todo mês</li><li>Acesso contínuo ao sistema</li></ul><div class="plano-mini">Melhor opção para quem quer manter o acesso sempre ativo.</div></div>', unsafe_allow_html=True)
+        if st.button("Assinar agora", key="btn_assinar_plano", use_container_width=True):
+            with st.spinner("Gerando assinatura..."):
+                try:
+                    data = criar_assinatura_mp(usuario_id, usuario_email)
+                    link = data.get("init_point") or data.get("sandbox_init_point")
+                    if link:
+                        st.success("Link de assinatura gerado com sucesso.")
+                        st.link_button("Ir para pagamento", link, use_container_width=True)
+                    else:
+                        st.error(f"Erro ao gerar assinatura: {data}")
+                except Exception as e:
+                    st.error(f"Erro ao gerar assinatura: {e}")
 
-        for chave in [
-            "logado", "usuario_id", "usuario_email", "usuario_nome", "tipo",
-            "sb_access_token", "sb_refresh_token", "abrir_configuracoes"
-        ]:
-            if chave in st.session_state:
-                del st.session_state[chave]
+def listar_assinaturas():
+    try:
+        resp = get_supabase().table("assinaturas").select("*").order("created_at", desc=True).execute()
+        return resp.data or []
+    except Exception:
+        return []
 
-        st.rerun()
+def listar_profiles():
+    try:
+        resp = get_supabase().table("profiles").select("*").execute()
+        return resp.data or []
+    except Exception:
+        return []
 
-# ---------------- CONTROLE LOGIN ----------------
+def formatar_data(valor):
+    if not valor:
+        return "-"
+    try:
+        return str(valor).replace("T", " ")[:19]
+    except Exception:
+        return str(valor)
+
+def montar_linhas():
+    profiles = listar_profiles()
+    assinaturas = listar_assinaturas()
+    mapa = {}
+    for a in assinaturas:
+        uid = a.get("user_id")
+        if uid and uid not in mapa:
+            mapa[uid] = a
+    linhas = []
+    for p in profiles:
+        uid = p.get("id")
+        a = mapa.get(uid)
+        ativo = assinatura_ativa_para_acesso(a)
+        linhas.append({"user_id": uid, "nome": p.get("nome") or "-", "email": p.get("email") or "-", "tipo": p.get("tipo", "corretor"), "status": a.get("status", "sem assinatura") if a else "sem assinatura", "pagamento_status": a.get("pagamento_status", "-") if a else "-", "assinatura_ativa": "Sim" if ativo else "Não", "data_inicio": formatar_data(a.get("data_inicio")) if a else "-", "data_fim": formatar_data(a.get("data_fim") or a.get("proximo_cobranca_em")) if a else "-"})
+    return linhas
+
+def tela_admin():
+    linhas = montar_linhas()
+    col1, col2, col3, col4 = st.columns(4)
+    with col1: st.metric("Usuários", len(linhas))
+    with col2: st.metric("Ativos", sum(1 for l in linhas if l["assinatura_ativa"] == "Sim"))
+    with col3: st.metric("Bloqueados", sum(1 for l in linhas if l["status"] == "bloqueado"))
+    with col4: st.metric("Pendentes/Sem assinatura", sum(1 for l in linhas if l["status"] in ["sem assinatura", "pendente"]))
+    st.markdown('<div class="gp-card"><div class="gp-section-title">🔎 Filtros</div>', unsafe_allow_html=True)
+    colf1, colf2 = st.columns(2)
+    with colf1: busca = st.text_input("Buscar por nome ou email", key="busca_admin")
+    with colf2: filtro_status = st.selectbox("Status", ["Todos", "ativo", "bloqueado", "sem assinatura", "pendente"], key="filtro_status_admin")
+    st.markdown('</div>', unsafe_allow_html=True)
+    linhas_filtradas = []
+    for l in linhas:
+        texto = f"{l['nome']} {l['email']}".lower()
+        if (not busca.strip() or busca.strip().lower() in texto) and (filtro_status == "Todos" or l["status"] == filtro_status):
+            linhas_filtradas.append(l)
+    st.markdown('<div class="gp-card"><div class="gp-section-title">🛠️ Painel de administração</div>', unsafe_allow_html=True)
+    if not linhas_filtradas:
+        st.info("Nenhum usuário encontrado.")
+    else:
+        for i, linha in enumerate(linhas_filtradas):
+            st.markdown(f"### {linha['nome']}")
+            st.caption(f"{linha['email']} • Tipo: {linha['tipo']} • User ID: {linha['user_id']}")
+            c1, c2, c3, c4, c5 = st.columns(5)
+            with c1: st.metric("Status", linha["status"])
+            with c2: st.metric("Pagamento", linha["pagamento_status"])
+            with c3: st.metric("Ativo", linha["assinatura_ativa"])
+            with c4: st.metric("Início", linha["data_inicio"])
+            with c5: st.metric("Fim", linha["data_fim"])
+            b1, b2, b3 = st.columns(3)
+            with b1:
+                if st.button("Liberar 30 dias", key=f"liberar_{i}", use_container_width=True):
+                    liberar_30_dias(linha["user_id"]); st.success("Usuário liberado por 30 dias."); st.rerun()
+            with b2:
+                if st.button("Renovar +30 dias", key=f"renovar_{i}", use_container_width=True):
+                    renovar_usuario(linha["user_id"], 30); st.success("Validade renovada com sucesso."); st.rerun()
+            with b3:
+                if st.button("Bloquear", key=f"bloquear_{i}", use_container_width=True):
+                    bloquear_usuario(linha["user_id"]); st.warning("Usuário bloqueado."); st.rerun()
+            st.divider()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+def tela_sistema_principal():
+    st.markdown('<div class="gp-card"><div class="gp-section-title">✅ Sistema principal</div><p>Seu pagamento está ativo. Aqui você encaixa o restante do seu sistema de propostas.</p><div class="plano-mini">Esse ponto já está pronto para receber o restante do app principal.</div></div>', unsafe_allow_html=True)
+
 init_auth_state()
 tentar_restaurar_sessao()
 
@@ -751,700 +380,22 @@ if not st.session_state["logado"]:
     tela_login()
     st.stop()
 
-assinatura = buscar_assinatura(st.session_state["usuario_id"])
-eh_admin = st.session_state.get("tipo") == "admin"
-acesso_liberado = eh_admin or assinatura_ativa_para_acesso(assinatura)
-
-if not acesso_liberado:
-    st.markdown("""
-    <div class="gp-card-dark">
-        <div style="font-size:1.5rem;font-weight:800;">💳 Assinatura GoPropostas</div>
-        <div style="margin-top:8px;font-size:1rem;opacity:0.92;">
-            Escolha a melhor forma para acessar o sistema:
-        </div>
-        <div style="margin-top:16px;font-size:1.95rem;font-weight:900;">
-            R$ 15,00 <span style="font-size:1rem;font-weight:500;">/ mês</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if assinatura:
-        st.info(f"Status atual: {assinatura.get('status', 'pendente')}")
-        if assinatura.get("proximo_cobranca_em"):
-            st.caption(f"Validade / próxima cobrança: {assinatura.get('proximo_cobranca_em')}")
-
-    col_pag_1, col_pag_2 = st.columns(2)
-
-    with col_pag_1:
-        st.markdown('<div class="gp-card">', unsafe_allow_html=True)
-        st.markdown('<div class="gp-section-title">💳 Assinatura no cartão</div>', unsafe_allow_html=True)
-        st.write("Cobrança recorrente automática mensal.")
-        if st.button("Assinar no cartão", use_container_width=True):
-            try:
-                data = criar_assinatura_mp(
-                    st.session_state["usuario_id"],
-                    st.session_state["usuario_email"]
-                )
-                link = data.get("init_point") or data.get("sandbox_init_point")
-
-                if link:
-                    st.link_button("👉 Ir para pagamento", link, use_container_width=True)
-                else:
-                    st.error(f"Erro ao gerar link de pagamento: {data}")
-            except Exception as e:
-                st.error(f"Erro ao iniciar assinatura: {e}")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col_pag_2:
-        st.markdown('<div class="gp-card">', unsafe_allow_html=True)
-        st.markdown('<div class="gp-section-title">🧾 PIX mensal</div>', unsafe_allow_html=True)
-        st.write("Pague manualmente via PIX e tenha acesso por 30 dias.")
-        if st.button("Gerar PIX", use_container_width=True):
-            try:
-                data = criar_pix(
-                    st.session_state["usuario_id"],
-                    st.session_state["usuario_email"]
-                )
-
-                qr_base64 = data.get("qr_code_base64")
-                qr_text = data.get("qr_code")
-
-                if not qr_base64 and data.get("raw"):
-                    try:
-                        tx = data["raw"]["point_of_interaction"]["transaction_data"]
-                        qr_base64 = tx.get("qr_code_base64")
-                        qr_text = tx.get("qr_code")
-                    except Exception:
-                        pass
-
-                if qr_base64:
-                    st.image(f"data:image/png;base64,{qr_base64}")
-                    if qr_text:
-                        st.code(qr_text)
-                    st.success("Escaneie ou copie o PIX.")
-
-                    ticket_url = None
-                    try:
-                        ticket_url = data["raw"]["point_of_interaction"]["transaction_data"]["ticket_url"]
-                    except Exception:
-                        pass
-
-                    if ticket_url:
-                        st.link_button("👉 Abrir pagamento PIX", ticket_url, use_container_width=True)
-                else:
-                    st.error(f"Erro ao gerar PIX: {data}")
-            except Exception as e:
-                st.error(f"Erro ao gerar PIX: {e}")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.stop()
-
 st.sidebar.write(f"👤 {st.session_state['usuario_nome']}")
 st.sidebar.write(f"📧 {st.session_state['usuario_email']}")
 st.sidebar.write(f"🔑 {st.session_state['tipo']}")
-
-if st.sidebar.button("⚙️ Configurações", use_container_width=True):
-    st.session_state["abrir_configuracoes"] = not st.session_state.get("abrir_configuracoes", False)
-
 logout()
 
-if st.session_state.get("abrir_configuracoes", False):
-    profile = buscar_profile_por_id(st.session_state["usuario_id"])
-
-    st.markdown('<div class="gp-card"><div class="gp-section-title">⚙️ Configurações da Conta</div>', unsafe_allow_html=True)
-
-    if profile:
-        novo_nome = st.text_input("Nome completo", value=profile.get("nome", ""), key="cfg_nome")
-        nova_imobiliaria = st.text_input(
-            "Nome da Imobiliária completo",
-            value=profile.get("nome_imobiliaria", ""),
-            key="cfg_imobiliaria"
-        )
-        novo_gerente = st.text_input(
-            "Nome do gerente completo",
-            value=profile.get("nome_gerente", ""),
-            key="cfg_gerente"
-        )
-        novo_diretor = st.text_input(
-            "Nome do diretor da imobiliária completo",
-            value=profile.get("nome_diretor", ""),
-            key="cfg_diretor"
-        )
-
-        if st.button("Salvar configurações", key="btn_salvar_cfg", use_container_width=True):
-            try:
-                atualizar_profile_config(
-                    st.session_state["usuario_id"],
-                    novo_nome,
-                    nova_imobiliaria,
-                    novo_gerente,
-                    novo_diretor,
-                )
-                st.session_state["usuario_nome"] = novo_nome
-                st.success("Configurações salvas com sucesso!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao salvar configurações: {e}")
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------------- EMPREENDIMENTOS ----------------
-empreendimentos = {
-    "Frei Galvão": {
-        "proprietario": "Frei Galvão empreendimentos imobiliários",
-        "nome": "Loteamento Frei Galvão",
-        "logradouro": "Avenida Fazenda Bananal",
-        "tabela": "tabela_frei_galvao.xlsx",
-        "contrato_nome": "Residencial Frei Galvão",
-    }
-}
-
-# ---------------- UTILITÁRIOS ----------------
-@st.cache_data
-def carregar_tabela(arquivo, mod_time):
-    df = pd.read_excel(arquivo, skiprows=11)
-    df.columns = df.columns.str.strip().str.lower()
-    return df
-
-def limpar(valor):
-    if pd.isna(valor):
-        return 0.0
-    if isinstance(valor, (int, float)):
-        return float(valor)
-    texto = str(valor).replace("R$", "").replace(".", "").replace(",", ".")
-    try:
-        return float(texto)
-    except Exception:
-        return 0.0
-
-def buscar(linha, nomes):
-    for col in linha.index:
-        for nome in nomes:
-            if nome.lower() in col.lower():
-                return limpar(linha[col])
-    return 0.0
-
-def excel_para_pdf(arquivo):
-    subprocess.run(
-        ["libreoffice", "--headless", "--convert-to", "pdf", arquivo],
-        check=False,
-    )
-    return arquivo.replace(".xlsx", ".pdf")
-
-def calcular_idade_em_data(nascimento: date, data_referencia: date) -> int:
-    return data_referencia.year - nascimento.year - (
-        (data_referencia.month, data_referencia.day) < (nascimento.month, nascimento.day)
-    )
-
-def adicionar_meses(data_base: date, meses: int) -> date:
-    ano = data_base.year + (data_base.month - 1 + meses) // 12
-    mes = (data_base.month - 1 + meses) % 12 + 1
-    ultimo_dia = [
-        31,
-        29 if (ano % 4 == 0 and (ano % 100 != 0 or ano % 400 == 0)) else 28,
-        31, 30, 31, 30, 31, 31, 30, 31, 30, 31
-    ][mes - 1]
-    dia = min(data_base.day, ultimo_dia)
-    return date(ano, mes, dia)
-
-def formatar_moeda(valor: float) -> str:
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-
-def criar_zip_bytes(arquivos: list[str]) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for arquivo in arquivos:
-            if os.path.exists(arquivo):
-                zf.write(arquivo, arcname=os.path.basename(arquivo))
-    buffer.seek(0)
-    return buffer.getvalue()
-
-def configurar_impressao(ws, orientation="portrait"):
-    ws.page_setup.orientation = orientation
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.print_options.horizontalCentered = True
-    ws.print_options.verticalCentered = False
-
-# ---------------- EXCEL PROPOSTA ----------------
-def preencher_proposta(d, modelo=MODELO_PROPOSTA):
-    wb = load_workbook(modelo)
-    ws = wb.active
-
-    ws["E5"] = d["nome"]
-    ws["D6"] = d["cpf"]
-    ws["J6"] = d["telefone"]
-    ws["O6"] = d["fixo"]
-    ws["D7"] = d["nacionalidade"]
-    ws["J7"] = d["profissao"]
-    ws["P7"] = d["fone_pref"]
-    ws["D8"] = d["estado_civil"]
-    ws["O8"] = d["renda"]
-    ws["E9"] = d["email"]
-
-    ws["G11"] = d["conjuge"]
-    ws["D13"] = d["cpf2"]
-    ws["J13"] = d["tel2"]
-    ws["O13"] = d["fixo2"]
-    ws["D14"] = d["nac2"]
-    ws["J14"] = d["prof2"]
-    ws["P14"] = d["fone2"]
-    ws["D15"] = d["civil2"]
-    ws["O15"] = d["renda2"]
-
-    ws["G18"] = d["proprietario"]
-    ws["G19"] = d["empreendimento"]
-    ws["C20"] = d["logradouro"]
-    ws["I20"] = d["unidade"]
-    ws["Q20"] = d["area"]
-
-    ws["C21"] = d["valor_negocio"]
-    ws["J21"] = d["entrada_total"]
-    ws["O21"] = d["valor_imovel"]
-
-    ws["B24"] = 1
-    ws["C24"] = d["entrada_imovel"]
-    ws["G24"] = "Única"
-    ws["K24"] = d["data_venc_emp"]
-
-    ws["B25"] = "36x"
-    ws["C25"] = d["parcela_36"]
-    ws["G25"] = "Mensal"
-    ws["K25"] = d["data_parcelas"]
-
-    ws["B26"] = 1
-    ws["C26"] = d["saldo"]
-    ws["G26"] = "Única"
-    ws["K26"] = d["data_saldo"]
-
-    ws["P24"] = "Fixo"
-    ws["P25"] = "Reajustável"
-    ws["P26"] = "Reajustável"
-
-    ws["B33"] = 1
-    ws["C33"] = d["entrada_cliente"]
-    ws["G33"] = "Única"
-    ws["P33"] = "À vista"
-    ws["K33"] = d["data_ato"]
-    ws["K33"].alignment = Alignment(horizontal="center", vertical="center")
-
-    if d["entrada_quitada"]:
-        ws["B34"] = ""
-        ws["C34"] = ""
-        ws["G34"] = ""
-        ws["P34"] = ""
-        ws["K34"] = ""
-
-        ws["B35"] = ""
-        ws["C35"] = ""
-        ws["G35"] = ""
-        ws["P35"] = ""
-        ws["K35"] = ""
-    else:
-        ws["B34"] = d["parcelas_iguais"]
-        ws["C34"] = d["valor_parcela_igual"]
-        ws["G34"] = "Mensal" if d["parcelas_iguais"] > 0 else ""
-        ws["P34"] = "Fixo"
-        ws["K34"] = d["data_parc_entrada"]
-        ws["K34"].alignment = Alignment(horizontal="center", vertical="center")
-
-        if d["usar_diferente"]:
-            ws["B35"] = 1
-            ws["C35"] = d["parcela_diferente"]
-            ws["G35"] = "Única"
-            ws["P35"] = "Fixa"
-            ws["K35"] = d["data_parcela_diferente_manual"]
-
-            for cel in ["B35", "G35", "K35", "P35"]:
-                ws[cel].alignment = Alignment(horizontal="center", vertical="center")
-        else:
-            ws["B35"] = ""
-            ws["C35"] = ""
-            ws["G35"] = ""
-            ws["P35"] = ""
-            ws["K35"] = ""
-
-    configurar_impressao(ws, "portrait")
-
-    arquivo = "proposta.xlsx"
-    wb.save(arquivo)
-    return arquivo
-
-# ---------------- EXCEL CONTRATO ----------------
-def preencher_contrato_intermediacao(d, modelo=CONTRATO_INTERMEDIACAO_MODELO):
-    wb = load_workbook(modelo)
-    ws = wb.active
-
-    ws["C5"] = d["nome"]
-    ws["C6"] = d["conjuge"]
-    ws["I5"] = d["cpf"]
-    ws["I6"] = d["cpf2"]
-    ws["L5"] = d["rg"]
-    ws["L6"] = d["rg2"]
-
-    ws["C10"] = d["nome_imobiliaria"]
-    ws["C11"] = d["nome_corretor"]
-    ws["C12"] = "Monyke Procopio"
-    ws["C13"] = d["nome_gerente"]
-    ws["C14"] = d["nome_diretor"]
-
-    ws["D17"] = d["empreendimento_contrato"]
-    ws["J17"] = d["unidade"]
-    ws["J19"] = d["valor_negocio"]
-    ws["D19"] = d["data_contrato_intermediacao"]
-    ws["K23"] = d["valor_total_comissao"]
-
-    ws["E26"] = d["valor_imobiliaria"]
-    ws["E27"] = d["valor_corretor"]
-    ws["E28"] = d["valor_ato_minimo"]
-    ws["E29"] = d["valor_gerente"]
-    ws["E30"] = d["valor_total_distribuicao"]
-
-    ws["F26"] = f"{d['porcentagem_imobiliaria']:.2f}%"
-    ws["F27"] = f"{d['porcentagem_corretor']:.2f}%"
-    ws["F28"] = "0.30%"
-    ws["F29"] = f"{d['porcentagem_gerente']:.2f}%"
-    ws["F30"] = "5.30%"
-
-    ws["C50"] = d["nome_corretor"]
-    ws["J50"] = d["nome_gerente"]
-    ws["C54"] = d["nome_diretor"]
-
-    configurar_impressao(ws, "portrait")
-
-    arquivo = "contrato_intermediacao.xlsx"
-    wb.save(arquivo)
-    return arquivo
-
-# ---------------- APP ----------------
-profile_atual = buscar_profile_por_id(st.session_state["usuario_id"]) or {}
-
-st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendimento</div>', unsafe_allow_html=True)
-
-emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
-emp = empreendimentos[emp_nome]
-
-caminho_tabela = Path(emp["tabela"])
-if not caminho_tabela.exists():
-    st.error(f"Arquivo da tabela não encontrado: {emp['tabela']}")
-    st.stop()
-
-mod_time = caminho_tabela.stat().st_mtime
-df = carregar_tabela(str(caminho_tabela), mod_time)
-
-col = df.columns[0]
-unidade = st.selectbox("Lote", df[col].dropna().unique(), key="lote")
-linha = df[df[col] == unidade].iloc[0]
-
-valor_negocio = buscar(linha, ["valor negócio"])
-entrada_imovel = buscar(linha, ["entrada imovel"])
-intermed = buscar(linha, ["intermediação"])
-parcela_36 = buscar(linha, ["36x"])
-saldo = buscar(linha, ["saldo"])
-area = buscar(linha, ["área", "area"])
-valor_imovel = buscar(linha, ["valor imóvel"])
-
-entrada_total = intermed + entrada_imovel
-ato_min = valor_negocio * 0.003
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-col_form_1, col_form_2 = st.columns(2)
-
-with col_form_1:
-    st.markdown('<div class="gp-card"><div class="gp-section-title">👤 Cliente</div>', unsafe_allow_html=True)
-    nome = st.text_input("Nome", key="nome")
-    cpf = st.text_input("CPF", key="cpf")
-    rg = st.text_input("RG", key="rg")
-    telefone = st.text_input("Telefone", key="tel")
-    fixo = st.text_input("Fixo", key="fixo")
-    nacionalidade = st.text_input("Nacionalidade", key="nac")
-    profissao = st.text_input("Profissão", key="prof")
-    fone_pref = st.text_input("Fone preferência", key="fonepref")
-    estado_civil = st.text_input("Estado civil", key="civil")
-    renda = st.text_input("Renda", key="renda")
-    email = st.text_input("Email", key="email")
-    data_nascimento = st.date_input(
-        "Data de nascimento do cliente",
-        value=date(1980, 1, 1),
-        min_value=date(1900, 1, 1),
-        max_value=date.today(),
-        key="data_nascimento"
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col_form_2:
-    st.markdown('<div class="gp-card"><div class="gp-section-title">👫 Cônjuge</div>', unsafe_allow_html=True)
-    conjuge = st.text_input("Nome", key="conj")
-    cpf2 = st.text_input("CPF", key="cpf2")
-    rg2 = st.text_input("RG", key="rg2")
-    tel2 = st.text_input("Telefone", key="tel2")
-    fixo2 = st.text_input("Fixo", key="fixo2")
-    nac2 = st.text_input("Nacionalidade", key="nac2")
-    prof2 = st.text_input("Profissão", key="prof2")
-    fone2 = st.text_input("Fone preferência", key="fone2")
-    civil2 = st.text_input("Estado civil", key="civil2")
-    renda2 = st.text_input("Renda", key="renda2")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-col_data_1, col_data_2 = st.columns(2)
-
-with col_data_1:
-    st.markdown('<div class="gp-card"><div class="gp-section-title">📅 Datas de Vencimento</div>', unsafe_allow_html=True)
-    data_venc_emp = st.date_input("Data Vencimento Empreendedor", key="venc_emp")
-    data_parcelas = st.date_input("Data Parcelas", key="venc_parc")
-    data_saldo = st.date_input("Data Saldo Devedor", key="venc_saldo")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with col_data_2:
-    st.markdown('<div class="gp-card"><div class="gp-section-title">📅 Datas da Entrada</div>', unsafe_allow_html=True)
-    data_ato = st.date_input("Data do ato", key="data_ato")
-    data_parc_entrada = st.date_input("Data primeiras parcelas entrada", key="data_parc_entrada")
-    data_parc_diferente = st.date_input("Data da parcela diferente", key="data_parc_dif")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown('<div class="gp-card"><div class="gp-section-title">💰 Condições</div>', unsafe_allow_html=True)
-
-valor_cliente = st.number_input("Entrada cliente", min_value=0.0, key="entrada")
-personalizar = st.checkbox("⚙️ Personalizar", key="pers")
-
-ato_manual = st.number_input("Valor ato", min_value=0.0, key="ato_manual") if personalizar else 0
-ato = ato_manual if ato_manual > 0 else ato_min
-
-restante = entrada_total - valor_cliente
-if restante < 0:
-    restante = 0
-
-entrada_quitada = restante <= 0.01
-
-valor_minimo_entrada = ato_min
-erros_validacao = []
-avisos_validacao = []
-
-if valor_cliente <= 0:
-    avisos_validacao.append("Nenhum valor foi informado em Entrada cliente.")
-
-if valor_cliente < valor_minimo_entrada:
-    erros_validacao.append(
-        f"Entrada cliente menor que o mínimo. Mínimo recomendado: {formatar_moeda(valor_minimo_entrada)}"
-    )
-
-if valor_cliente > entrada_total:
-    avisos_validacao.append("Entrada cliente maior que a entrada total. O excedente não será parcelado.")
-
-parcelas = st.slider("Parcelas", 1, 4, 1, key="parc")
-
-usar_diferente = False
-parcela_diferente = 0
-data_parcela_diferente = ""
-parcelas_iguais = 0
-valor_parcela_igual = 0
-
-if not entrada_quitada:
-    parcelas_iguais = parcelas
-    valor_parcela_igual = restante / parcelas if parcelas > 0 else 0
-
-if personalizar and parcelas > 1 and not entrada_quitada:
-    parcela_editada = st.number_input("Parcela diferente", min_value=0.0, key="diff")
-    restante_auto = restante - parcela_editada
-
-    if restante_auto < 0:
-        restante_auto = 0
-        avisos_validacao.append("A parcela diferente está maior que o restante disponível.")
-
-    valor_parcela_igual = restante_auto / (parcelas - 1)
-
-    if abs(parcela_editada - valor_parcela_igual) > 0.01:
-        usar_diferente = True
-        parcela_diferente = parcela_editada
-        parcelas_iguais = parcelas - 1
-        data_parcela_diferente = st.date_input("Data parcela diferente", key="data_diff")
-
-        if parcela_diferente > restante:
-            erros_validacao.append("A parcela diferente não pode ser maior que o restante da entrada.")
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-with st.expander("📑 Detalhes Contrato de Intermediação", expanded=False):
-    data_contrato_intermediacao = st.date_input("Data Contrato de Intermediação", key="data_contrato_intermediacao")
-    porcentagem_imobiliaria = st.number_input("Porcentagem Imobiliária", min_value=0.0, step=0.01, key="pct_imobiliaria")
-    porcentagem_corretor = st.number_input("Porcentagem Corretor", min_value=0.0, step=0.01, key="pct_corretor")
-    porcentagem_gerente = st.number_input("Porcentagem Gerente", min_value=0.0, step=0.01, key="pct_gerente")
-
-valor_imobiliaria = valor_negocio * (porcentagem_imobiliaria / 100)
-valor_corretor = valor_negocio * (porcentagem_corretor / 100)
-valor_gerente = valor_negocio * (porcentagem_gerente / 100)
-valor_ato_minimo = ato_min
-valor_total_distribuicao = valor_imobiliaria + valor_corretor + valor_ato_minimo + valor_gerente
-valor_total_comissao = valor_negocio * 0.053
-
-if abs(valor_total_distribuicao - valor_total_comissao) > 0.01:
-    erros_validacao.append(
-        "Contrato de intermediação inválido: a soma de E26, E27, E28 e E29 deve ser exatamente 5,30% do valor total do negócio."
-    )
-
-st.markdown('<div class="gp-card"><div class="gp-section-title">🏡 Detalhes do Lote</div>', unsafe_allow_html=True)
-col_l1, col_l2 = st.columns(2)
-with col_l1:
-    st.metric("Unidade", unidade)
-    st.metric("Área (m²)", f"{area:.2f}")
-    st.metric("Entrada Imóvel", formatar_moeda(entrada_imovel))
-
-with col_l2:
-    st.metric("Valor Negócio", formatar_moeda(valor_negocio))
-    st.metric("Valor Imóvel", formatar_moeda(valor_imovel))
-    st.metric("Intermediação", formatar_moeda(intermed))
-st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown('<div class="gp-card"><div class="gp-section-title">📊 Painel de Cálculo</div>', unsafe_allow_html=True)
-col_c1, col_c2 = st.columns(2)
-with col_c1:
-    st.metric("Entrada Total", formatar_moeda(entrada_total))
-    st.metric("Entrada Cliente (C33)", formatar_moeda(valor_cliente))
-    st.metric("Valor mínimo", formatar_moeda(valor_minimo_entrada))
-
-with col_c2:
-    st.metric("Ato informado", formatar_moeda(ato))
-    st.metric("Restante para parcelar", formatar_moeda(restante))
-    st.metric("Quantidade de parcelas", f"{parcelas}")
-
-st.markdown("### 📅 Parcelamento da entrada")
-if entrada_quitada:
-    st.success("Entrada paga à vista")
-elif parcelas > 1:
-    if usar_diferente:
-        st.info(
-            f"{parcelas_iguais}x de {formatar_moeda(valor_parcela_igual)} + "
-            f"1x de {formatar_moeda(parcela_diferente)}"
-        )
-    else:
-        st.success(f"{parcelas}x de {formatar_moeda(valor_parcela_igual)}")
+eh_admin = st.session_state.get("tipo") in ["admin", "Administrador", "administrador"]
+
+if eh_admin:
+    abas = st.tabs(["Sistema", "Painel Admin"])
+    with abas[0]:
+        tela_sistema_principal()
+    with abas[1]:
+        tela_admin()
 else:
-    st.success("Pagamento em parcela única")
-st.markdown('</div>', unsafe_allow_html=True)
-
-st.markdown('<div class="gp-card"><div class="gp-section-title">📑 Painel Contrato de Intermediação</div>', unsafe_allow_html=True)
-col_i1, col_i2, col_i3 = st.columns(3)
-with col_i1:
-    st.metric("5,30% do negócio", formatar_moeda(valor_total_comissao))
-    st.metric("Imobiliária", formatar_moeda(valor_imobiliaria))
-with col_i2:
-    st.metric("Corretor", formatar_moeda(valor_corretor))
-    st.metric("0,30% entrada mínima", formatar_moeda(valor_ato_minimo))
-with col_i3:
-    st.metric("Gerente", formatar_moeda(valor_gerente))
-    st.metric("Total distribuição", formatar_moeda(valor_total_distribuicao))
-st.markdown('</div>', unsafe_allow_html=True)
-
-if avisos_validacao:
-    for aviso in avisos_validacao:
-        st.warning(f"⚠️ {aviso}")
-
-if erros_validacao:
-    for erro in erros_validacao:
-        st.error(f"❌ {erro}")
-
-proposta_pode_ser_gerada = len(erros_validacao) == 0
-
-if st.button("Gerar Proposta + Contrato", use_container_width=True, disabled=not proposta_pode_ser_gerada):
-    data_final_36_parcelas = adicionar_meses(data_parcelas, 36)
-    idade_apos_36 = calcular_idade_em_data(data_nascimento, data_final_36_parcelas)
-
-    if idade_apos_36 >= 75:
-        st.warning("Cliente não conseguirá refinanciar após as 36 parcelas (idade superior a 75 anos)")
-
-    dados = {
-        "nome": nome,
-        "cpf": cpf,
-        "rg": rg,
-        "telefone": telefone,
-        "fixo": fixo,
-        "nacionalidade": nacionalidade,
-        "profissao": profissao,
-        "fone_pref": fone_pref,
-        "estado_civil": estado_civil,
-        "renda": renda,
-        "email": email,
-        "conjuge": conjuge,
-        "cpf2": cpf2,
-        "rg2": rg2,
-        "tel2": tel2,
-        "fixo2": fixo2,
-        "nac2": nac2,
-        "prof2": prof2,
-        "fone2": fone2,
-        "civil2": civil2,
-        "renda2": renda2,
-        "proprietario": emp["proprietario"],
-        "empreendimento": emp["nome"],
-        "empreendimento_contrato": emp.get("contrato_nome", emp["nome"]),
-        "logradouro": emp["logradouro"],
-        "unidade": unidade,
-        "area": area,
-        "valor_negocio": valor_negocio,
-        "entrada_total": entrada_total,
-        "valor_imovel": valor_imovel,
-        "entrada_imovel": entrada_imovel,
-        "parcela_36": parcela_36,
-        "saldo": saldo,
-        "entrada_cliente": valor_cliente,
-        "entrada_quitada": entrada_quitada,
-        "ato": ato,
-        "parcelas_iguais": parcelas_iguais,
-        "valor_parcela_igual": valor_parcela_igual,
-        "usar_diferente": usar_diferente,
-        "parcela_diferente": parcela_diferente,
-        "data_parcela_diferente": data_parcela_diferente.strftime("%d/%m/%Y") if usar_diferente else "",
-        "data_venc_emp": data_venc_emp.strftime("%d/%m/%Y"),
-        "data_parcelas": data_parcelas.strftime("%d/%m/%Y"),
-        "data_saldo": data_saldo.strftime("%d/%m/%Y"),
-        "data_ato": data_ato.strftime("%d/%m/%Y") if data_ato else "",
-        "data_parc_entrada": data_parc_entrada.strftime("%d/%m/%Y") if data_parc_entrada else "",
-        "data_parcela_diferente_manual": data_parc_diferente.strftime("%d/%m/%Y") if data_parc_diferente else "",
-        "data_contrato_intermediacao": data_contrato_intermediacao.strftime("%d/%m/%Y") if data_contrato_intermediacao else "",
-        "nome_imobiliaria": profile_atual.get("nome_imobiliaria", ""),
-        "nome_corretor": profile_atual.get("nome", st.session_state["usuario_nome"]),
-        "nome_gerente": profile_atual.get("nome_gerente", ""),
-        "nome_diretor": profile_atual.get("nome_diretor", ""),
-        "porcentagem_imobiliaria": porcentagem_imobiliaria,
-        "porcentagem_corretor": porcentagem_corretor,
-        "porcentagem_gerente": porcentagem_gerente,
-        "valor_imobiliaria": valor_imobiliaria,
-        "valor_corretor": valor_corretor,
-        "valor_gerente": valor_gerente,
-        "valor_ato_minimo": valor_ato_minimo,
-        "valor_total_distribuicao": valor_total_distribuicao,
-        "valor_total_comissao": valor_total_comissao,
-    }
-
-    excel_proposta = preencher_proposta(dados)
-    excel_contrato = preencher_contrato_intermediacao(dados)
-
-    pdf_proposta = excel_para_pdf(excel_proposta)
-    pdf_contrato = excel_para_pdf(excel_contrato)
-
-    zip_excels = criar_zip_bytes([excel_proposta, excel_contrato])
-    zip_pdfs = criar_zip_bytes([pdf_proposta, pdf_contrato])
-
-    st.success("✅ Proposta e contrato gerados com sucesso!")
-
-    col_down_1, col_down_2 = st.columns(2)
-
-    with col_down_1:
-        st.download_button(
-            "📥 Baixar 2 arquivos em Excel",
-            data=zip_excels,
-            file_name=f"Excels_{unidade}.zip",
-            mime="application/zip",
-            use_container_width=True,
-        )
-
-    with col_down_2:
-        st.download_button(
-            "📥 Baixar 2 arquivos em PDF",
-            data=zip_pdfs,
-            file_name=f"PDFs_{unidade}.zip",
-            mime="application/zip",
-            use_container_width=True,
-        )
+    assinatura = buscar_assinatura(st.session_state["usuario_id"])
+    if not assinatura_ativa_para_acesso(assinatura):
+        tela_plano_pagamento(st.session_state["usuario_id"], st.session_state["usuario_email"])
+        st.stop()
+    tela_sistema_principal()
