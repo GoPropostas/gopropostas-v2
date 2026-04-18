@@ -476,15 +476,13 @@ def criar_pix(user_id: str, email: str):
         return {"error": f"Resposta inválida da função PIX: status {resp.status_code}", "raw_text": resp.text}
 
 
-def atualizar_profile_config(user_id: str, nome: str, nome_imobiliaria: str, nome_gerente: str, nome_diretor: str):
+def atualizar_profile_config(user_id: str, nome: str, creci: str):
     return (
         get_supabase()
         .table("profiles")
         .update({
             "nome": nome,
-            "nome_imobiliaria": nome_imobiliaria,
-            "nome_gerente": nome_gerente,
-            "nome_diretor": nome_diretor,
+            "creci": creci,
         })
         .eq("id", user_id)
         .execute()
@@ -502,9 +500,7 @@ def cadastrar_com_supabase(
     nome: str,
     email: str,
     senha: str,
-    nome_imobiliaria: str,
-    nome_gerente: str,
-    nome_diretor: str,
+    creci: str,
 ):
     return get_supabase().auth.sign_up({
         "email": email,
@@ -512,9 +508,7 @@ def cadastrar_com_supabase(
         "options": {
             "data": {
                 "nome": nome,
-                "nome_imobiliaria": nome_imobiliaria,
-                "nome_gerente": nome_gerente,
-                "nome_diretor": nome_diretor,
+                "creci": creci,
             }
         }
     })
@@ -572,20 +566,24 @@ def buscar_relacao_usuario_imobiliaria(user_id: str, imobiliaria_id: str):
     return resp.data[0] if resp.data else None
 
 
-def solicitar_acesso_imobiliaria(user_id: str, imobiliaria_id: str):
+def solicitar_acesso_imobiliaria(user_id: str, imobiliaria_id: str, gerente_selecionado: str = "", diretor_selecionado: str = ""):
     existente = buscar_relacao_usuario_imobiliaria(user_id, imobiliaria_id)
     if existente:
         return existente
 
+    payload = {
+        "user_id": user_id,
+        "imobiliaria_id": imobiliaria_id,
+        "status": "pendente",
+        "cargo": "corretor",
+        "gerente_selecionado": gerente_selecionado,
+        "diretor_selecionado": diretor_selecionado,
+    }
+
     resp = (
         get_supabase()
         .table("usuarios_imobiliarias")
-        .insert({
-            "user_id": user_id,
-            "imobiliaria_id": imobiliaria_id,
-            "status": "pendente",
-            "cargo": "corretor",
-        })
+        .insert(payload)
         .execute()
     )
     return resp.data[0] if resp.data else None
@@ -706,6 +704,7 @@ def init_auth_state():
         "tipo": "",
         "sb_access_token": "",
         "sb_refresh_token": "",
+        "creci": "",
         "abrir_configuracoes": False,
         "imobiliaria_id": "",
         "imobiliaria_nome": "",
@@ -788,6 +787,7 @@ def aplicar_login(profile: dict):
     st.session_state["usuario_email"] = profile["email"]
     st.session_state["usuario_nome"] = profile.get("nome") or profile["email"]
     st.session_state["tipo"] = profile.get("tipo", "corretor")
+    st.session_state["creci"] = profile.get("creci", "")
 
 
 def salvar_tokens_da_sessao(auth_response):
@@ -972,9 +972,7 @@ def tela_login():
 
     with abas[1]:
         nome_cadastro = st.text_input("Nome completo", key="cad_nome")
-        nome_imobiliaria = st.text_input("Nome da Imobiliária completo", key="cad_imobiliaria")
-        nome_gerente = st.text_input("Nome do gerente completo", key="cad_gerente")
-        nome_diretor = st.text_input("Nome do diretor da imobiliária completo", key="cad_diretor")
+        creci_cadastro = st.text_input("CRECI", key="cad_creci")
         email_cadastro = st.text_input("Email", key="cad_email")
         senha_cadastro = st.text_input("Senha", type="password", key="cad_senha")
         confirmar = st.text_input("Confirmar senha", type="password", key="cad_confirm")
@@ -986,13 +984,10 @@ def tela_login():
 
             if (
                 not nome_cadastro.strip()
-                or not nome_imobiliaria.strip()
-                or not nome_gerente.strip()
-                or not nome_diretor.strip()
                 or not email_cadastro.strip()
                 or not senha_cadastro.strip()
             ):
-                st.warning("Preencha todos os campos.")
+                st.warning("Preencha os campos obrigatórios.")
                 return
 
             try:
@@ -1005,9 +1000,7 @@ def tela_login():
                     nome_cadastro,
                     email_cadastro,
                     senha_cadastro,
-                    nome_imobiliaria,
-                    nome_gerente,
-                    nome_diretor,
+                    creci_cadastro,
                 )
                 user = resp.user
 
@@ -1398,6 +1391,11 @@ else:
                 st.session_state["imobiliaria_status"] = relacao_ativa["status"]
                 st.session_state["cargo_imobiliaria"] = relacao_ativa["cargo"]
                 st.session_state["imobiliaria_escolhida_manualmente"] = True
+
+                pct_imob, pct_corr, pct_ger = obter_percentuais_imobiliaria(relacao_ativa.get("imobiliarias", {}))
+                st.session_state["pct_imobiliaria"] = pct_imob
+                st.session_state["pct_corretor"] = pct_corr
+                st.session_state["pct_gerente"] = pct_ger
         else:
             st.session_state["imobiliaria_id"] = ""
             st.session_state["imobiliaria_nome"] = ""
@@ -1444,15 +1442,50 @@ if not eh_admin:
 
         nova_imob = next((i for i in disponiveis if i["nome"] == nova_imob_nome), None)
 
+        gerente_escolhido = ""
+        diretor_escolhido = ""
+
+        if nova_imob:
+            gerentes_disp, diretores_disp = obter_opcoes_gerentes_diretores(nova_imob)
+
+            if gerentes_disp:
+                gerente_escolhido = st.sidebar.selectbox(
+                    "Selecione o gerente",
+                    gerentes_disp,
+                    key="nova_imob_gerente_select"
+                )
+            else:
+                st.sidebar.caption("Nenhum gerente cadastrado para esta imobiliária.")
+
+            if diretores_disp:
+                diretor_escolhido = st.sidebar.selectbox(
+                    "Selecione o diretor",
+                    diretores_disp,
+                    key="nova_imob_diretor_select"
+                )
+            else:
+                st.sidebar.caption("Nenhum diretor cadastrado para esta imobiliária.")
+
         if nova_imob and st.sidebar.button("Solicitar acesso", use_container_width=True):
             solicitar_acesso_imobiliaria(
                 st.session_state["usuario_id"],
-                nova_imob["id"]
+                nova_imob["id"],
+                gerente_escolhido,
+                diretor_escolhido,
             )
             st.sidebar.success("Solicitação enviada")
             st.rerun()
     else:
         st.sidebar.caption("Nenhuma nova imobiliária disponível.")
+
+
+if st.session_state.get("imobiliaria_id"):
+    _imob_atual = buscar_imobiliaria_ativa(st.session_state["imobiliaria_id"])
+    if _imob_atual:
+        _pct_imob, _pct_corr, _pct_ger = obter_percentuais_imobiliaria(_imob_atual)
+        st.session_state["pct_imobiliaria"] = _pct_imob
+        st.session_state["pct_corretor"] = _pct_corr
+        st.session_state["pct_gerente"] = _pct_ger
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("## 🧰 Navegação")
@@ -1483,20 +1516,17 @@ def render_config_page():
 
     if profile:
         novo_nome = st.text_input("Nome completo", value=profile.get("nome", ""), key="cfg_nome")
-        nova_imobiliaria = st.text_input("Nome da Imobiliária completo", value=profile.get("nome_imobiliaria", ""), key="cfg_imobiliaria")
-        novo_gerente = st.text_input("Nome do gerente completo", value=profile.get("nome_gerente", ""), key="cfg_gerente")
-        novo_diretor = st.text_input("Nome do diretor da imobiliária completo", value=profile.get("nome_diretor", ""), key="cfg_diretor")
+        novo_creci = st.text_input("CRECI", value=profile.get("creci", ""), key="cfg_creci")
 
         if st.button("Salvar configurações", key="btn_salvar_cfg", use_container_width=True):
             try:
                 atualizar_profile_config(
                     st.session_state["usuario_id"],
                     novo_nome,
-                    nova_imobiliaria,
-                    novo_gerente,
-                    novo_diretor,
+                    novo_creci,
                 )
                 st.session_state["usuario_nome"] = novo_nome
+                st.session_state["creci"] = novo_creci
                 st.success("Configurações salvas com sucesso!")
                 st.rerun()
             except Exception as e:
@@ -1976,6 +2006,13 @@ with st.expander("📑 Detalhes Contrato de Intermediação", expanded=False):
         step=0.01,
         key="pct_gerente",
         format="%.2f"
+    )
+
+    porcentagem_total_padrao = (
+        float(porcentagem_imobiliaria)
+        + float(porcentagem_corretor)
+        + float(porcentagem_gerente)
+        + 0.30
     )
 
     st.caption(f"Percentual total da imobiliária ativa: {float(porcentagem_total_padrao):.2f}%")
