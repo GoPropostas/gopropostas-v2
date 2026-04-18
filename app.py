@@ -4,7 +4,7 @@ import base64
 import zipfile
 import subprocess
 from pathlib import Path
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 
 import pandas as pd
 import requests
@@ -317,107 +317,6 @@ def buscar_assinatura(user_id: str):
         return None
 
 
-
-def buscar_todas_assinaturas():
-    try:
-        resp = (
-            get_supabase()
-            .table("assinaturas")
-            .select("*")
-            .order("created_at", desc=True)
-            .execute()
-        )
-        return resp.data or []
-    except Exception:
-        return []
-
-def buscar_assinatura_por_user_id(user_id: str):
-    try:
-        resp = (
-            get_supabase()
-            .table("assinaturas")
-            .select("*")
-            .eq("user_id", user_id)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        return resp.data[0] if resp.data else None
-    except Exception:
-        return None
-
-def upsert_assinatura(user_id: str, dados: dict):
-    atual = buscar_assinatura_por_user_id(user_id)
-    if atual:
-        return (
-            get_supabase()
-            .table("assinaturas")
-            .update(dados)
-            .eq("id", atual["id"])
-            .execute()
-        )
-    payload = {"user_id": user_id} | dados
-    return (
-        get_supabase()
-        .table("assinaturas")
-        .insert(payload)
-        .execute()
-    )
-
-def liberar_assinatura_30_dias(user_id: str):
-    agora = datetime.now(timezone.utc)
-    fim = agora + timedelta(days=30)
-    return upsert_assinatura(user_id, {
-        "status": "ativo",
-        "pagamento_status": "manual_admin",
-        "assinatura_ativa": True,
-        "data_inicio": agora.isoformat(),
-        "data_fim": fim.isoformat(),
-        "proximo_cobranca_em": fim.isoformat(),
-        "updated_at": agora.isoformat(),
-    })
-
-def renovar_assinatura_30_dias(user_id: str):
-    agora = datetime.now(timezone.utc)
-    atual = buscar_assinatura_por_user_id(user_id)
-    base = agora
-    if atual:
-        valor_fim = atual.get("data_fim") or atual.get("proximo_cobranca_em")
-        if valor_fim:
-            try:
-                fim_atual = datetime.fromisoformat(str(valor_fim).replace("Z", "+00:00"))
-                if fim_atual > agora:
-                    base = fim_atual
-            except Exception:
-                pass
-    novo_fim = base + timedelta(days=30)
-    return upsert_assinatura(user_id, {
-        "status": "ativo",
-        "pagamento_status": "renovado_admin",
-        "assinatura_ativa": True,
-        "data_inicio": atual.get("data_inicio") if atual and atual.get("data_inicio") else agora.isoformat(),
-        "data_fim": novo_fim.isoformat(),
-        "proximo_cobranca_em": novo_fim.isoformat(),
-        "updated_at": agora.isoformat(),
-    })
-
-def bloquear_assinatura(user_id: str):
-    agora = datetime.now(timezone.utc)
-    return upsert_assinatura(user_id, {
-        "status": "bloqueado",
-        "pagamento_status": "bloqueado_admin",
-        "assinatura_ativa": False,
-        "updated_at": agora.isoformat(),
-    })
-
-def formatar_data_admin(valor):
-    if not valor:
-        return "-"
-    try:
-        return str(valor).replace("T", " ")[:19]
-    except Exception:
-        return str(valor)
-
 def assinatura_ativa_para_acesso(assinatura: dict) -> bool:
     if not assinatura:
         return False
@@ -714,7 +613,6 @@ def init_auth_state():
         "imobiliaria_escolhida_manualmente": False,
         "proposta_em_edicao_id": "",
         "proposta_carregada": {},
-        "pagina_atual": "principal",
     }
     for chave, valor in defaults.items():
         if chave not in st.session_state:
@@ -1455,28 +1353,18 @@ if not eh_admin:
         st.sidebar.caption("Nenhuma nova imobiliária disponível.")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("## 🧰 Navegação")
-if st.sidebar.button("🏠 Área principal", use_container_width=True):
-    st.session_state["pagina_atual"] = "principal"
-    st.rerun()
-if st.sidebar.button("📚 Histórico de propostas", use_container_width=True):
-    st.session_state["pagina_atual"] = "historico"
-    st.rerun()
+st.sidebar.markdown("## 🧰 Ações")
 if st.sidebar.button("⚙️ Configurações", use_container_width=True):
-    st.session_state["pagina_atual"] = "configuracoes"
-    st.rerun()
+    st.session_state["abrir_configuracoes"] = not st.session_state.get("abrir_configuracoes", False)
 
 logout()
 
 if eh_admin:
     st.sidebar.markdown("---")
     st.sidebar.markdown("## 🔑 Administração")
-    if st.sidebar.button("👥 Aprovações por imobiliária", use_container_width=True):
-        st.session_state["pagina_atual"] = "aprovacoes"
-        st.rerun()
+    st.sidebar.caption("Aprovação de usuários na tela principal.")
 
-
-def render_config_page():
+if st.session_state.get("abrir_configuracoes", False):
     profile = buscar_profile_por_id(st.session_state["usuario_id"])
 
     st.markdown('<div class="gp-card"><div class="gp-section-title">⚙️ Configurações da Conta</div>', unsafe_allow_html=True)
@@ -1505,164 +1393,44 @@ def render_config_page():
     st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------- TELA DE APROVAÇÃO ADMIN ----------------
-def render_admin_aprovacoes_page():
-    st.markdown('<div class="gp-card"><div class="gp-section-title">🔑 Aprovar usuários por imobiliária</div>', unsafe_allow_html=True)
-    pendentes = listar_pendentes_imobiliarias()
+if eh_admin:
+    with st.expander("🔑 Aprovar usuários por imobiliária", expanded=True):
+        pendentes = listar_pendentes_imobiliarias()
 
-    if not pendentes:
-        st.info("Nenhuma solicitação pendente.")
-    else:
-        for p in pendentes:
-            perfil = p.get("profile_usuario") or {}
-            imob = p.get("imobiliarias") or {}
+        if not pendentes:
+            st.info("Nenhuma solicitação pendente.")
+        else:
+            for p in pendentes:
+                perfil = p.get("profile_usuario") or {}
+                imob = p.get("imobiliarias") or {}
 
-            st.markdown('<div class="gp-card">', unsafe_allow_html=True)
-            st.write(f"**Usuário:** {perfil.get('email', '-')}")
-            st.write(f"**Nome:** {perfil.get('nome', '-')}")
-            st.write(f"**Imobiliária:** {imob.get('nome', '-')}")
+                st.markdown('<div class="gp-card">', unsafe_allow_html=True)
+                st.write(f"**Usuário:** {perfil.get('email', '-')}")
+                st.write(f"**Nome:** {perfil.get('nome', '-')}")
+                st.write(f"**Imobiliária:** {imob.get('nome', '-')}")
 
-            col_ap1, col_ap2, col_ap3 = st.columns([2, 1, 1])
+                col_ap1, col_ap2, col_ap3 = st.columns([2, 1, 1])
 
-            with col_ap1:
-                cargo_aprovacao = st.selectbox(
-                    "Cargo",
-                    ["corretor", "gerente", "diretor"],
-                    key=f"cargo_{p['id']}"
-                )
+                with col_ap1:
+                    cargo_aprovacao = st.selectbox(
+                        "Cargo",
+                        ["corretor", "gerente", "diretor"],
+                        key=f"cargo_{p['id']}"
+                    )
 
-            with col_ap2:
-                if st.button("Aprovar", key=f"aprovar_{p['id']}", use_container_width=True):
-                    aprovar_usuario_imobiliaria(p["id"], cargo_aprovacao)
-                    st.success("Usuário aprovado")
-                    st.rerun()
-
-            with col_ap3:
-                if st.button("Rejeitar", key=f"rejeitar_{p['id']}", use_container_width=True):
-                    rejeitar_usuario_imobiliaria(p["id"])
-                    st.warning("Usuário rejeitado")
-                    st.rerun()
-
-            st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-def render_admin_assinaturas_page():
-    st.markdown('<div class="gp-card"><div class="gp-section-title">💳 Assinaturas e Dashboard</div>', unsafe_allow_html=True)
-
-    profiles = []
-    try:
-        profiles = (
-            get_supabase()
-            .table("profiles")
-            .select("*")
-            .order("email")
-            .execute()
-        ).data or []
-    except Exception:
-        profiles = []
-
-    mapa_profiles = {p.get("id"): p for p in profiles}
-    assinaturas = buscar_todas_assinaturas()
-    mapa_ass = {}
-    for a in assinaturas:
-        uid = a.get("user_id")
-        if uid and uid not in mapa_ass:
-            mapa_ass[uid] = a
-
-    usuarios = []
-    for p in profiles:
-        uid = p.get("id")
-        a = mapa_ass.get(uid)
-        ativo = assinatura_ativa_para_acesso(a) if a else False
-        usuarios.append({
-            "user_id": uid,
-            "nome": p.get("nome") or p.get("email") or "-",
-            "email": p.get("email") or "-",
-            "tipo": p.get("tipo", "corretor"),
-            "status": a.get("status", "sem assinatura") if a else "sem assinatura",
-            "pagamento_status": a.get("pagamento_status", "-") if a else "-",
-            "ativo": "Sim" if ativo else "Não",
-            "inicio": formatar_data_admin(a.get("data_inicio")) if a else "-",
-            "fim": formatar_data_admin(a.get("data_fim") or a.get("proximo_cobranca_em")) if a else "-",
-        })
-
-    total = len(usuarios)
-    ativos = sum(1 for u in usuarios if u["ativo"] == "Sim")
-    bloqueados = sum(1 for u in usuarios if u["status"] == "bloqueado")
-    pendentes = sum(1 for u in usuarios if u["status"] in ["sem assinatura", "pendente"])
-
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.metric("Usuários", total)
-    with m2:
-        st.metric("Ativos", ativos)
-    with m3:
-        st.metric("Bloqueados", bloqueados)
-    with m4:
-        st.metric("Pendentes", pendentes)
-
-    colf1, colf2 = st.columns(2)
-    with colf1:
-        busca_ass = st.text_input("Buscar por nome ou email", key="busca_ass")
-    with colf2:
-        filtro_ass = st.selectbox("Filtrar status", ["Todos", "ativo", "bloqueado", "sem assinatura", "pendente"], key="filtro_ass")
-
-    filtrados = []
-    for u in usuarios:
-        texto = f"{u['nome']} {u['email']}".lower()
-        ok_busca = busca_ass.strip().lower() in texto if busca_ass.strip() else True
-        ok_status = True if filtro_ass == "Todos" else u["status"] == filtro_ass
-        if ok_busca and ok_status:
-            filtrados.append(u)
-
-    if not filtrados:
-        st.info("Nenhum usuário encontrado.")
-    else:
-        for i, u in enumerate(filtrados):
-            st.markdown('<div class="gp-card">', unsafe_allow_html=True)
-            st.write(f"**Usuário:** {u['nome']}")
-            st.write(f"**Email:** {u['email']}")
-            st.write(f"**Tipo:** {u['tipo']}")
-
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                st.metric("Status", u["status"])
-            with c2:
-                st.metric("Pagamento", u["pagamento_status"])
-            with c3:
-                st.metric("Ativo", u["ativo"])
-            with c4:
-                st.metric("Validade", u["fim"])
-
-            b1, b2, b3 = st.columns(3)
-            with b1:
-                if st.button("Aprovar 30 dias", key=f"aprovar_30_{i}", use_container_width=True):
-                    try:
-                        liberar_assinatura_30_dias(u["user_id"])
-                        st.success("Assinatura aprovada por 30 dias.")
+                with col_ap2:
+                    if st.button("Aprovar", key=f"aprovar_{p['id']}", use_container_width=True):
+                        aprovar_usuario_imobiliaria(p["id"], cargo_aprovacao)
+                        st.success("Usuário aprovado")
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao aprovar: {e}")
-            with b2:
-                if st.button("Reaprovar +30 dias", key=f"reaprovar_30_{i}", use_container_width=True):
-                    try:
-                        renovar_assinatura_30_dias(u["user_id"])
-                        st.success("Assinatura renovada por mais 30 dias.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao renovar: {e}")
-            with b3:
-                if st.button("Bloquear", key=f"bloquear_ass_{i}", use_container_width=True):
-                    try:
-                        bloquear_assinatura(u["user_id"])
-                        st.warning("Usuário bloqueado.")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao bloquear: {e}")
 
-            st.markdown('</div>', unsafe_allow_html=True)
+                with col_ap3:
+                    if st.button("Rejeitar", key=f"rejeitar_{p['id']}", use_container_width=True):
+                        rejeitar_usuario_imobiliaria(p["id"])
+                        st.warning("Usuário rejeitado")
+                        st.rerun()
 
-    st.markdown("</div>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------- BLOQUEIO DE ACESSO ----------------
 if not eh_admin:
@@ -1699,95 +1467,99 @@ st.session_state["pct_imobiliaria"] = porcentagem_imobiliaria_padrao
 st.session_state["pct_corretor"] = porcentagem_corretor_padrao
 st.session_state["pct_gerente"] = porcentagem_gerente_padrao
 
-st.markdown('<div class="gp-card"><div class="gp-section-title">🧭 Navegação</div>', unsafe_allow_html=True)
-nav_cols = st.columns(5 if eh_admin else 3)
-with nav_cols[0]:
-    if st.button("🏠 Principal", use_container_width=True, key="nav_principal"):
-        st.session_state["pagina_atual"] = "principal"
-        st.rerun()
-with nav_cols[1]:
-    if st.button("📚 Histórico", use_container_width=True, key="nav_historico"):
-        st.session_state["pagina_atual"] = "historico"
-        st.rerun()
-with nav_cols[2]:
-    if st.button("⚙️ Configurações", use_container_width=True, key="nav_config"):
-        st.session_state["pagina_atual"] = "configuracoes"
-        st.rerun()
-if eh_admin:
-    with nav_cols[3]:
-        if st.button("👥 Aprovações", use_container_width=True, key="nav_aprovacoes"):
-            st.session_state["pagina_atual"] = "aprovacoes"
-            st.rerun()
-    with nav_cols[4]:
-        if st.button("💳 Assinaturas", use_container_width=True, key="nav_assinaturas"):
-            st.session_state["pagina_atual"] = "assinaturas"
-            st.rerun()
-st.markdown("</div>", unsafe_allow_html=True)
-
-
 # =========================
 # HISTÓRICO
 # =========================
-def render_historico_page():
-    st.markdown('<div class="gp-card"><div class="gp-section-title">📚 Histórico de propostas</div>', unsafe_allow_html=True)
+st.markdown('<div class="gp-card"><div class="gp-section-title">📚 Histórico de propostas</div>', unsafe_allow_html=True)
 
-    propostas_usuario = listar_propostas_usuario(
-        st.session_state["usuario_id"],
-        st.session_state.get("imobiliaria_id")
+propostas_usuario = listar_propostas_usuario(
+    st.session_state["usuario_id"],
+    st.session_state.get("imobiliaria_id")
+)
+
+if propostas_usuario:
+    opcoes_propostas = {
+        f"{p.get('cliente_nome', 'Sem nome')} | {p.get('empreendimento', '-')} | {p.get('lote', '-')} | {str(p.get('created_at', ''))[:10]}": p["id"]
+        for p in propostas_usuario
+    }
+
+    proposta_label = st.selectbox(
+        "Selecione uma proposta já gerada para carregar",
+        ["Nenhuma"] + list(opcoes_propostas.keys()),
+        key="historico_propostas_select"
     )
 
-    if propostas_usuario:
-        opcoes_propostas = {
-            f"{p.get('cliente_nome', 'Sem nome')} | {p.get('empreendimento', '-')} | {p.get('lote', '-')} | {str(p.get('created_at', ''))[:10]}": p["id"]
-            for p in propostas_usuario
-        }
+    col_hist_1, col_hist_2 = st.columns(2)
 
-        proposta_label = st.selectbox(
-            "Selecione uma proposta já gerada para carregar",
-            ["Nenhuma"] + list(opcoes_propostas.keys()),
-            key="historico_propostas_select"
-        )
-
-        if proposta_label != "Nenhuma":
+    with col_hist_1:
+        if proposta_label != "Nenhuma" and st.button("Carregar proposta", use_container_width=True):
             proposta_id = opcoes_propostas[proposta_label]
-            proposta_bd = buscar_proposta_por_id(proposta_id)
+            proposta = buscar_proposta_por_id(proposta_id)
+            if proposta:
+                carregar_proposta_no_formulario(proposta)
+                st.success("Proposta carregada.")
+                st.rerun()
 
-            if proposta_bd:
-                col_hist_1, col_hist_2 = st.columns(2)
+    with col_hist_2:
+        if st.session_state.get("proposta_em_edicao_id") and st.button("Limpar proposta carregada", use_container_width=True):
+            limpar_formulario()
+            st.success("Formulário limpo.")
+            st.rerun()
+else:
+    st.caption("Nenhuma proposta encontrada para esta imobiliária.")
 
-                with col_hist_1:
-                    if st.button("📥 Carregar proposta no formulário", use_container_width=True, key="btn_historico_carregar"):
-                        carregar_proposta_no_formulario(proposta_bd)
-                        st.session_state["pagina_atual"] = "principal"
-                        st.success("Proposta carregada no formulário.")
-                        st.rerun()
+if st.session_state.get("proposta_em_edicao_id"):
+    st.info("Você está editando uma proposta já existente.")
 
-                with col_hist_2:
-                    if st.button("🧹 Limpar edição atual", use_container_width=True, key="btn_historico_limpar"):
-                        limpar_formulario()
-                        st.success("Formulário limpo.")
-                        st.rerun()
+st.markdown("</div>", unsafe_allow_html=True)
 
-                st.json(proposta_bd)
-    else:
-        st.info("Nenhuma proposta encontrada para esta imobiliária.")
+# =========================
+# EMPREENDIMENTOS
+# =========================
+empreendimentos = {
+    "Frei Galvão": {
+        "proprietario": "Frei Galvão empreendimentos imobiliários",
+        "nome": "Loteamento Frei Galvão",
+        "logradouro": "Avenida Fazenda Bananal",
+        "tabela": "tabela_frei_galvao.xlsx",
+        "contrato_nome": "Residencial Frei Galvão",
+    }
+}
 
-    st.markdown("</div>", unsafe_allow_html=True)
+st.markdown('<div class="gp-card"><div class="gp-section-title">🏢 Empreendimento</div>', unsafe_allow_html=True)
 
-pagina_atual = st.session_state.get("pagina_atual", "principal")
-if pagina_atual == "configuracoes":
-    render_config_page()
+emp_nome = st.selectbox("Selecione", list(empreendimentos.keys()), key="emp")
+emp = empreendimentos[emp_nome]
+
+caminho_tabela = Path(emp["tabela"])
+if not caminho_tabela.exists():
+    st.error(f"Arquivo da tabela não encontrado: {emp['tabela']}")
     st.stop()
-if pagina_atual == "historico":
-    render_historico_page()
-    st.stop()
-if pagina_atual == "aprovacoes" and eh_admin:
-    render_admin_aprovacoes_page()
-    st.stop()
-if pagina_atual == "assinaturas" and eh_admin:
-    render_admin_assinaturas_page()
-    st.stop()
 
+mod_time = caminho_tabela.stat().st_mtime
+df = carregar_tabela(str(caminho_tabela), mod_time)
+
+coluna_lote = df.columns[0]
+lotes_disponiveis = df[coluna_lote].dropna().astype(str).unique().tolist()
+
+if st.session_state["lote"] not in lotes_disponiveis:
+    st.session_state["lote"] = lotes_disponiveis[0]
+
+unidade = st.selectbox("Lote", lotes_disponiveis, key="lote")
+linha = df[df[coluna_lote].astype(str) == str(unidade)].iloc[0]
+
+valor_negocio = buscar(linha, ["valor negócio", "valor negocio"])
+entrada_imovel = buscar(linha, ["entrada imovel", "entrada imóvel"])
+intermed = buscar(linha, ["intermediação", "intermediacao"])
+parcela_36 = buscar(linha, ["36x"])
+saldo = buscar(linha, ["saldo"])
+area = buscar(linha, ["área", "area"])
+valor_imovel = buscar(linha, ["valor imóvel", "valor imovel"])
+
+entrada_total = intermed + entrada_imovel
+ato_min = valor_negocio * 0.003
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # =========================
 # FORMULÁRIO
