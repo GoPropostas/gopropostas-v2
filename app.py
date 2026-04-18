@@ -4,7 +4,7 @@ import base64
 import zipfile
 import subprocess
 from pathlib import Path
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 
 import pandas as pd
 import requests
@@ -743,194 +743,6 @@ def logout():
 
         st.rerun()
 
-
-# ---------------- ADMIN SAAS ----------------
-def listar_profiles_admin():
-    try:
-        resp = get_supabase().table("profiles").select("*").execute()
-        return resp.data or []
-    except Exception:
-        return []
-
-def listar_assinaturas_admin():
-    try:
-        resp = get_supabase().table("assinaturas").select("*").order("created_at", desc=True).execute()
-        return resp.data or []
-    except Exception:
-        return []
-
-def buscar_assinatura_admin_por_user(user_id: str):
-    try:
-        resp = (
-            get_supabase()
-            .table("assinaturas")
-            .select("*")
-            .eq("user_id", user_id)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        return resp.data[0] if resp.data else None
-    except Exception:
-        return None
-
-def upsert_assinatura_admin(user_id: str, dados: dict):
-    atual = buscar_assinatura_admin_por_user(user_id)
-    if atual:
-        return get_supabase().table("assinaturas").update(dados).eq("id", atual["id"]).execute()
-    payload = {"user_id": user_id} | dados
-    return get_supabase().table("assinaturas").insert(payload).execute()
-
-def admin_liberar_30_dias(user_id: str):
-    agora = datetime.now(timezone.utc)
-    fim = agora + timedelta(days=30)
-    dados = {
-        "status": "ativo",
-        "pagamento_status": "manual_admin",
-        "assinatura_ativa": True,
-        "data_inicio": agora.isoformat(),
-        "data_fim": fim.isoformat(),
-        "proximo_cobranca_em": fim.isoformat(),
-        "updated_at": agora.isoformat(),
-    }
-    return upsert_assinatura_admin(user_id, dados)
-
-def admin_renovar_30_dias(user_id: str):
-    agora = datetime.now(timezone.utc)
-    atual = buscar_assinatura_admin_por_user(user_id)
-    base = agora
-    if atual:
-        for campo in ["data_fim", "proximo_cobranca_em"]:
-            valor = atual.get(campo)
-            if valor:
-                try:
-                    dt = datetime.fromisoformat(str(valor).replace("Z", "+00:00"))
-                    if dt > base:
-                        base = dt
-                except Exception:
-                    pass
-    fim = base + timedelta(days=30)
-    dados = {
-        "status": "ativo",
-        "pagamento_status": "renovado_admin",
-        "assinatura_ativa": True,
-        "data_inicio": atual.get("data_inicio") if atual and atual.get("data_inicio") else agora.isoformat(),
-        "data_fim": fim.isoformat(),
-        "proximo_cobranca_em": fim.isoformat(),
-        "updated_at": agora.isoformat(),
-    }
-    return upsert_assinatura_admin(user_id, dados)
-
-def admin_bloquear_usuario(user_id: str):
-    agora = datetime.now(timezone.utc)
-    dados = {
-        "status": "bloqueado",
-        "pagamento_status": "bloqueado_admin",
-        "assinatura_ativa": False,
-        "updated_at": agora.isoformat(),
-    }
-    return upsert_assinatura_admin(user_id, dados)
-
-def admin_formatar_data(valor):
-    if not valor:
-        return "-"
-    try:
-        return str(valor).replace("T", " ")[:19]
-    except Exception:
-        return str(valor)
-
-def render_painel_admin_saas():
-    profiles = listar_profiles_admin()
-    assinaturas = listar_assinaturas_admin()
-    mapa_ass = {}
-    for a in assinaturas:
-        uid = a.get("user_id")
-        if uid and uid not in mapa_ass:
-            mapa_ass[uid] = a
-
-    linhas = []
-    for p in profiles:
-        uid = p.get("id")
-        a = mapa_ass.get(uid, {})
-        linhas.append({
-            "user_id": uid,
-            "nome": p.get("nome") or "-",
-            "email": p.get("email") or "-",
-            "tipo": p.get("tipo", "corretor"),
-            "status": a.get("status", "sem assinatura") if a else "sem assinatura",
-            "pagamento_status": a.get("pagamento_status", "-") if a else "-",
-            "assinatura_ativa": "Sim" if assinatura_ativa_para_acesso(a) else "Não",
-            "data_inicio": admin_formatar_data(a.get("data_inicio")) if a else "-",
-            "data_fim": admin_formatar_data(a.get("data_fim") or a.get("proximo_cobranca_em")) if a else "-",
-        })
-
-    st.markdown('<div class="gp-card"><div class="gp-section-title">🛠️ Painel Admin SaaS</div>', unsafe_allow_html=True)
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.metric("Usuários", len(linhas))
-    with m2:
-        st.metric("Ativos", sum(1 for x in linhas if x["assinatura_ativa"] == "Sim"))
-    with m3:
-        st.metric("Bloqueados", sum(1 for x in linhas if x["status"] == "bloqueado"))
-    with m4:
-        st.metric("Pendentes", sum(1 for x in linhas if x["status"] in ["sem assinatura", "pendente"]))
-
-    c1, c2 = st.columns(2)
-    with c1:
-        busca = st.text_input("Buscar por nome ou email", key="admin_busca")
-    with c2:
-        status = st.selectbox("Status", ["Todos", "ativo", "bloqueado", "sem assinatura", "pendente"], key="admin_status")
-
-    for i, linha in enumerate(linhas):
-        texto = f'{linha["nome"]} {linha["email"]}'.lower()
-        if busca and busca.lower().strip() not in texto:
-            continue
-        if status != "Todos" and linha["status"] != status:
-            continue
-
-        st.markdown(f"### {linha['nome']}")
-        st.caption(f"{linha['email']} • Tipo: {linha['tipo']} • User ID: {linha['user_id']}")
-        mc1, mc2, mc3, mc4, mc5 = st.columns(5)
-        with mc1:
-            st.metric("Status", linha["status"])
-        with mc2:
-            st.metric("Pagamento", linha["pagamento_status"])
-        with mc3:
-            st.metric("Ativo", linha["assinatura_ativa"])
-        with mc4:
-            st.metric("Início", linha["data_inicio"])
-        with mc5:
-            st.metric("Fim", linha["data_fim"])
-
-        b1, b2, b3 = st.columns(3)
-        with b1:
-            if st.button("Liberar 30 dias", key=f"admin_lib_{i}", use_container_width=True):
-                try:
-                    admin_liberar_30_dias(linha["user_id"])
-                    st.success("Usuário liberado por 30 dias.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao liberar: {e}")
-        with b2:
-            if st.button("Renovar +30 dias", key=f"admin_ren_{i}", use_container_width=True):
-                try:
-                    admin_renovar_30_dias(linha["user_id"])
-                    st.success("Validade renovada com sucesso.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao renovar: {e}")
-        with b3:
-            if st.button("Bloquear", key=f"admin_bloq_{i}", use_container_width=True):
-                try:
-                    admin_bloquear_usuario(linha["user_id"])
-                    st.warning("Usuário bloqueado.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao bloquear: {e}")
-        st.divider()
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
 # ---------------- CONTROLE LOGIN ----------------
 init_auth_state()
 tentar_restaurar_sessao()
@@ -1035,13 +847,6 @@ if st.sidebar.button("⚙️ Configurações", use_container_width=True):
     st.session_state["abrir_configuracoes"] = not st.session_state.get("abrir_configuracoes", False)
 
 logout()
-
-if eh_admin:
-    st.sidebar.markdown("---")
-    abrir_admin_saas = st.sidebar.toggle("🛠️ Painel Admin SaaS", key="toggle_admin_saas")
-    if abrir_admin_saas:
-        render_painel_admin_saas()
-        st.stop()
 
 if st.session_state.get("abrir_configuracoes", False):
     profile = buscar_profile_por_id(st.session_state["usuario_id"])
