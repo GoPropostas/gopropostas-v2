@@ -22,8 +22,8 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = st.secrets["EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL"].strip()
-EDGE_FUNCTION_CREATE_PIX_URL = st.secrets["EDGE_FUNCTION_CREATE_PIX_URL"].strip()
+EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL = st.secrets.get("EDGE_FUNCTION_CREATE_SUBSCRIPTION_URL", "").strip()
+EDGE_FUNCTION_CREATE_PIX_URL = st.secrets.get("EDGE_FUNCTION_CREATE_PIX_URL", "").strip()
 LOGO_CANDIDATES = ["logo.png", "logo_padrao.png", "Apresentação de logo moderno e profissional.png"]
 CONTRATO_INTERMEDIACAO_MODELO = "Contrato de Intermediação (3).xlsx"
 MODELO_PROPOSTA = "modelo_proposta.xlsx"
@@ -1347,90 +1347,15 @@ if not st.session_state["logado"]:
     tela_login()
     st.stop()
 
+# =========================
+# ACESSO LIBERADO SEM PAGAMENTO
+# =========================
+# Pagamento/assinatura mensal desativados por enquanto.
+# O login continua obrigatório e o acesso por imobiliária continua controlado.
 assinatura = buscar_assinatura(st.session_state["usuario_id"])
 eh_admin = st.session_state.get("tipo") == "admin"
-acesso_liberado = eh_admin or assinatura_ativa_para_acesso(assinatura)
-
-if not acesso_liberado:
-    st.markdown("""
-    <div class="gp-card-dark">
-        <div style="font-size:1.5rem;font-weight:800;">💳 Assinatura GoPropostas</div>
-        <div style="margin-top:8px;font-size:1rem;opacity:0.92;">
-            Escolha a melhor forma para acessar o sistema:
-        </div>
-        <div style="margin-top:16px;font-size:1.95rem;font-weight:900;">
-            R$ 15,00 <span style="font-size:1rem;font-weight:500;">/ mês</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    if assinatura:
-        st.info(f"Status atual: {assinatura.get('status', 'pendente')}")
-        if assinatura.get("proximo_cobranca_em") or assinatura.get("data_fim"):
-            st.caption(f"Validade / próxima cobrança: {assinatura.get('proximo_cobranca_em') or assinatura.get('data_fim')}")
-
-    col_pag_1, col_pag_2 = st.columns(2)
-
-    with col_pag_1:
-        st.markdown('<div class="gp-card">', unsafe_allow_html=True)
-        st.markdown('<div class="gp-section-title">💳 Assinatura no cartão</div>', unsafe_allow_html=True)
-        st.write("Cobrança recorrente automática mensal.")
-        if st.button("Assinar no cartão", use_container_width=True):
-            try:
-                data = criar_assinatura_mp(
-                    st.session_state["usuario_id"],
-                    st.session_state["usuario_email"]
-                )
-                link = data.get("init_point") or data.get("sandbox_init_point")
-                if link:
-                    st.link_button("👉 Ir para pagamento", link, use_container_width=True)
-                else:
-                    st.error(f"Erro ao gerar link de pagamento: {data}")
-            except Exception as e:
-                st.error(f"Erro ao iniciar assinatura: {e}")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col_pag_2:
-        st.markdown('<div class="gp-card">', unsafe_allow_html=True)
-        st.markdown('<div class="gp-section-title">🧾 PIX mensal</div>', unsafe_allow_html=True)
-        st.write("Pague manualmente via PIX e tenha acesso por 30 dias.")
-        if st.button("Gerar PIX", use_container_width=True):
-            try:
-                data = criar_pix(
-                    st.session_state["usuario_id"],
-                    st.session_state["usuario_email"]
-                )
-
-                qr_base64 = data.get("qr_code_base64")
-                qr_text = data.get("qr_code")
-
-                if not qr_base64 and data.get("raw"):
-                    try:
-                        tx = data["raw"]["point_of_interaction"]["transaction_data"]
-                        qr_base64 = tx.get("qr_code_base64")
-                        qr_text = tx.get("qr_code")
-                    except Exception:
-                        pass
-
-                if qr_base64:
-                    st.image(f"data:image/png;base64,{qr_base64}")
-                    if qr_text:
-                        st.code(qr_text)
-                    st.success("Escaneie ou copie o PIX.")
-                    try:
-                        ticket_url = data["raw"]["point_of_interaction"]["transaction_data"]["ticket_url"]
-                    except Exception:
-                        ticket_url = None
-                    if ticket_url:
-                        st.link_button("👉 Abrir pagamento PIX", ticket_url, use_container_width=True)
-                else:
-                    st.error(f"Erro ao gerar PIX: {data}")
-            except Exception as e:
-                st.error(f"Erro ao gerar PIX: {e}")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    st.stop()
-
+MODO_PAGAMENTO_ATIVO = False
+acesso_liberado = True
 
 st.sidebar.markdown("## 👤 Conta")
 st.sidebar.write(st.session_state["usuario_nome"])
