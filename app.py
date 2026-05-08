@@ -719,8 +719,116 @@ def listar_pendentes_imobiliarias():
     return relacoes
 
 
+def adicionar_nome_em_lista_texto(lista_atual, nome_novo: str) -> str:
+    nome_novo = (nome_novo or "").strip()
+    if not nome_novo:
+        return lista_atual or ""
+
+    existentes = extrair_lista_opcoes(lista_atual)
+    existentes_lower = [x.strip().lower() for x in existentes]
+
+    if nome_novo.lower() not in existentes_lower:
+        existentes.append(nome_novo)
+
+    return "|".join(existentes)
+
+
+def sincronizar_gerente_diretor_na_imobiliaria(relacao_id: str, cargo: str):
+    # Quando alguém é aprovado como gerente/diretor,
+    # o nome passa a aparecer na lista da imobiliária para novos corretores escolherem.
+    try:
+        rel_resp = (
+            get_supabase()
+            .table("usuarios_imobiliarias")
+            .select("*")
+            .eq("id", relacao_id)
+            .limit(1)
+            .execute()
+        )
+
+        if not rel_resp.data:
+            return
+
+        rel = rel_resp.data[0]
+        imobiliaria_id = rel.get("imobiliaria_id")
+        user_id = rel.get("user_id")
+
+        if not imobiliaria_id or not user_id:
+            return
+
+        perfil = buscar_profile_por_id(user_id) or {}
+        nome_para_lista = perfil.get("nome") or perfil.get("email") or ""
+
+        if not nome_para_lista:
+            return
+
+        imob = buscar_imobiliaria_ativa(imobiliaria_id) or {}
+
+        if cargo == "gerente":
+            nova_lista = adicionar_nome_em_lista_texto(imob.get("gerentes"), nome_para_lista)
+            get_supabase().table("imobiliarias").update({"gerentes": nova_lista}).eq("id", imobiliaria_id).execute()
+
+        if cargo == "diretor":
+            nova_lista = adicionar_nome_em_lista_texto(imob.get("diretores"), nome_para_lista)
+            get_supabase().table("imobiliarias").update({"diretores": nova_lista}).eq("id", imobiliaria_id).execute()
+
+    except Exception as e:
+        st.warning(f"Usuário aprovado, mas não foi possível atualizar a lista de gerente/diretor: {e}")
+
+
+def remover_nome_em_lista_texto(lista_atual, nome_remover: str) -> str:
+    nome_remover = (nome_remover or "").strip().lower()
+    if not nome_remover:
+        return lista_atual or ""
+
+    existentes = extrair_lista_opcoes(lista_atual)
+    filtrados = [x for x in existentes if x.strip().lower() != nome_remover]
+    return "|".join(filtrados)
+
+
+def remover_gerente_diretor_da_imobiliaria(relacao_id: str):
+    try:
+        rel_resp = (
+            get_supabase()
+            .table("usuarios_imobiliarias")
+            .select("*")
+            .eq("id", relacao_id)
+            .limit(1)
+            .execute()
+        )
+
+        if not rel_resp.data:
+            return
+
+        rel = rel_resp.data[0]
+        imobiliaria_id = rel.get("imobiliaria_id")
+        user_id = rel.get("user_id")
+
+        if not imobiliaria_id or not user_id:
+            return
+
+        perfil = buscar_profile_por_id(user_id) or {}
+        nome_para_lista = perfil.get("nome") or perfil.get("email") or ""
+
+        if not nome_para_lista:
+            return
+
+        imob = buscar_imobiliaria_ativa(imobiliaria_id) or {}
+
+        novas_gerentes = remover_nome_em_lista_texto(imob.get("gerentes"), nome_para_lista)
+        novos_diretores = remover_nome_em_lista_texto(imob.get("diretores"), nome_para_lista)
+
+        get_supabase().table("imobiliarias").update({
+            "gerentes": novas_gerentes,
+            "diretores": novos_diretores,
+        }).eq("id", imobiliaria_id).execute()
+
+    except Exception:
+        pass
+
+
 def aprovar_usuario_imobiliaria(relacao_id: str, cargo: str):
-    return (
+    resp = (
         get_supabase()
         .table("usuarios_imobiliarias")
         .update({
@@ -730,6 +838,11 @@ def aprovar_usuario_imobiliaria(relacao_id: str, cargo: str):
         .eq("id", relacao_id)
         .execute()
     )
+
+    if cargo in ["gerente", "diretor"]:
+        sincronizar_gerente_diretor_na_imobiliaria(relacao_id, cargo)
+
+    return resp
 
 
 def rejeitar_usuario_imobiliaria(relacao_id: str):
@@ -742,6 +855,37 @@ def rejeitar_usuario_imobiliaria(relacao_id: str):
         .eq("id", relacao_id)
         .execute()
     )
+
+
+def remover_usuario_imobiliaria(relacao_id: str):
+    remover_gerente_diretor_da_imobiliaria(relacao_id)
+    return (
+        get_supabase()
+        .table("usuarios_imobiliarias")
+        .delete()
+        .eq("id", relacao_id)
+        .execute()
+    )
+
+
+def listar_usuarios_vinculados_imobiliarias(imobiliaria_id: str | None = None):
+    query = (
+        get_supabase()
+        .table("usuarios_imobiliarias")
+        .select("*, imobiliarias(*)")
+        .in_("status", ["aprovado", "rejeitado", "pendente"])
+        .order("created_at", desc=True)
+    )
+
+    if imobiliaria_id:
+        query = query.eq("imobiliaria_id", imobiliaria_id)
+
+    resp = query.execute()
+    relacoes = resp.data or []
+
+    for r in relacoes:
+        r["profile_usuario"] = buscar_profile_por_id(r["user_id"])
+    return relacoes
 
 
 # =========================
@@ -1567,7 +1711,10 @@ def render_config_page():
 # ---------------- TELA DE APROVAÇÃO ADMIN ----------------
 def render_admin_aprovacoes_page():
     st.markdown('<div class="gp-card"><div class="gp-section-title">🔑 Aprovar usuários por imobiliária</div>', unsafe_allow_html=True)
+
     pendentes = listar_pendentes_imobiliarias()
+
+    st.markdown("### Solicitações pendentes")
 
     if not pendentes:
         st.info("Nenhuma solicitação pendente.")
@@ -1583,7 +1730,8 @@ def render_admin_aprovacoes_page():
                 if p.get("diretor_selecionado"):
                     st.write(f"**Diretor escolhido:** {p.get('diretor_selecionado')}")
 
-                col_ap1, col_ap2, col_ap3 = st.columns([2, 1, 1])
+                col_ap1, col_ap2, col_ap3, col_ap4 = st.columns([2, 1, 1, 1])
+
                 with col_ap1:
                     cargo_aprovacao = st.selectbox(
                         "Cargo",
@@ -1603,7 +1751,77 @@ def render_admin_aprovacoes_page():
                         st.warning("Usuário rejeitado")
                         st.rerun()
 
-    st.markdown("</div>", unsafe_allow_html=True)
+                with col_ap4:
+                    if st.button("Remover", key=f"remover_pendente_{p['id']}", use_container_width=True):
+                        remover_usuario_imobiliaria(p["id"])
+                        st.error("Usuário removido da imobiliária.")
+                        st.rerun()
+
+    st.markdown("---")
+    st.markdown("### Usuários vinculados às imobiliárias")
+
+    imobiliaria_filtro_id = None
+    if not eh_admin:
+        imobiliaria_filtro_id = st.session_state.get("imobiliaria_id") or None
+
+    vinculados = listar_usuarios_vinculados_imobiliarias(imobiliaria_filtro_id)
+
+    if not vinculados:
+        st.info("Nenhum usuário vinculado encontrado.")
+    else:
+        busca_vinc = st.text_input("Buscar por nome, email ou imobiliária", key="busca_vinculados_imobiliaria")
+
+        for rel in vinculados:
+            perfil = rel.get("profile_usuario") or {}
+            imob = rel.get("imobiliarias") or {}
+
+            texto_busca = f"{perfil.get('nome','')} {perfil.get('email','')} {imob.get('nome','')} {rel.get('status','')} {rel.get('cargo','')}".lower()
+            if busca_vinc and busca_vinc.strip().lower() not in texto_busca:
+                continue
+
+            titulo = (
+                f"{perfil.get('nome') or perfil.get('email') or 'Usuário'}"
+                f" | {perfil.get('email', '-')}"
+                f" | {imob.get('nome', '-')}"
+                f" | {rel.get('status', '-')}"
+            )
+
+            with st.expander(titulo):
+                st.write(f"**Nome:** {perfil.get('nome', '-')}")
+                st.write(f"**Email:** {perfil.get('email', '-')}")
+                st.write(f"**Imobiliária:** {imob.get('nome', '-')}")
+                st.write(f"**Status:** {rel.get('status', '-')}")
+                st.write(f"**Cargo:** {rel.get('cargo', '-')}")
+                if rel.get("gerente_selecionado"):
+                    st.write(f"**Gerente escolhido:** {rel.get('gerente_selecionado')}")
+                if rel.get("diretor_selecionado"):
+                    st.write(f"**Diretor escolhido:** {rel.get('diretor_selecionado')}")
+
+                col_v1, col_v2, col_v3 = st.columns([1, 1, 1])
+
+                with col_v1:
+                    opcoes_cargo = ["corretor", "gerente", "diretor"]
+                    cargo_atual = rel.get("cargo", "corretor")
+                    idx = opcoes_cargo.index(cargo_atual) if cargo_atual in opcoes_cargo else 0
+                    novo_cargo = st.selectbox(
+                        "Alterar cargo",
+                        opcoes_cargo,
+                        index=idx,
+                        key=f"novo_cargo_{rel['id']}"
+                    )
+
+                with col_v2:
+                    if st.button("Salvar cargo", key=f"salvar_cargo_{rel['id']}", use_container_width=True):
+                        aprovar_usuario_imobiliaria(rel["id"], novo_cargo)
+                        st.success("Cargo atualizado.")
+                        st.rerun()
+
+                with col_v3:
+                    if st.button("Remover da imobiliária", key=f"remover_vinc_{rel['id']}", use_container_width=True):
+                        remover_usuario_imobiliaria(rel["id"])
+                        st.error("Usuário removido da imobiliária.")
+                        st.rerun()
+
     st.markdown("</div>", unsafe_allow_html=True)
 
 
